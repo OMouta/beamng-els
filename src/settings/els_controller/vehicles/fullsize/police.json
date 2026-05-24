@@ -1,0 +1,48 @@
+{
+  "lights": {
+    "stages": [
+      "off",
+      "on"
+    ]
+  },
+  "feedback": {
+    "enabled": true,
+    "selected": "classic",
+    "variations": {
+      "classic": {
+        "sound": "art/sound/els_controller/beep_classic.wav",
+        "volume": 0.55
+      },
+      "high": {
+        "sound": "art/sound/els_controller/beep_high.wav",
+        "volume": 0.55
+      }
+    }
+  },
+  "sirens": [
+    {
+      "id": 1,
+      "label": "Grand Marshal Primary Wail",
+      "soundscapeId": "soundscape_siren_4",
+      "volume": 1.0
+    },
+    {
+      "id": 2,
+      "label": "Grand Marshal Alternate Wail",
+      "soundscapeId": "soundscape_siren_3",
+      "volume": 1.0
+    },
+    {
+      "id": 3,
+      "label": "Grand Marshal Yelp",
+      "soundscapeId": "soundscape_siren_8",
+      "volume": 1.0
+    },
+    {
+      "id": 4,
+      "label": "Grand Marshal Hi-Lo",
+      "soundscapeId": "soundscape_siren_7",
+      "volume": 1.0
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "lights": {
+    "stages": [
+      "off",
+      "on"
+    ]
+  },
+  "feedback": {
+    "enabled": true,
+    "selected": "classic",
+    "variations": {
+      "classic": {
+        "sound": "art/sound/els_controller/beep_classic.wav",
+        "volume": 0.55
+      },
+      "high": {
+        "sound": "art/sound/els_controller/beep_high.wav",
+        "volume": 0.55
+      }
+    }
+  },
+  "sirens": [
+    {
+      "id": 1,
+      "label": "D-Series Wail",
+      "soundscapeId": "soundscape_siren_3",
+      "volume": 1.0
+    },
+    {
+      "id": 2,
+      "label": "D-Series Wail 2",
+      "soundscapeId": "soundscape_siren_4",
+      "volume": 1.0
+    },
+    {
+      "id": 3,
+      "label": "D-Series Yelp",
+      "soundscapeId": "soundscape_siren_9",
+      "volume": 1.0
+    },
+    {
+      "id": 4,
+      "label": "D-Series Hi-Lo",
+      "soundscapeId": "soundscape_siren_10",
+      "volume": 1.0
+    }
+  ]
+}

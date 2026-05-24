@@ -1,0 +1,327 @@
+<style>
+  els-visualizer {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .els {
+    --case-1: #2a2c31;
+    --case-2: #141519;
+    --case-edge: #050506;
+    --recess-1: #0a0b0d;
+    --recess-2: #15171b;
+    --key-1: #3a3d43;
+    --key-2: #25272c;
+    --key-3: #191b1f;
+    --frame: #71757d;          /* light screen-printed outline */
+    --frame-lo: #14161a;
+    --txt: #d6dae0;
+    --txt-dim: #6b6f77;
+    --green: #54ff86;
+    --green-hot: #c9ffd9;
+    --green-deep: #16c24e;
+    --red: #d8202d;
+    --label-dim: #6c7077;
+    --led-green: #5dff8a;
+    --led-amber: #ffc24d;
+    --led-off: #20231f;
+
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 3px;
+    font-family: "Bahnschrift", "DIN Condensed", "Oswald", "Arial Narrow", sans-serif;
+    color: var(--txt);
+    background: transparent;
+    overflow: visible;
+  }
+
+  .els *, .els *::before, .els *::after { box-sizing: border-box; }
+
+  /* ---- moulded plastic shell ---- */
+  .els .case {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    padding: 8px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    border-radius: 9px;
+    background: linear-gradient(157deg, var(--case-1) 0%, var(--case-2) 46%, #0a0b0d 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      inset 0 -2px 5px rgba(0,0,0,0.7),
+      0 4px 10px rgba(0,0,0,0.55);
+    overflow: hidden;
+  }
+  .els .case::after {
+    content: "";
+    position: absolute; inset: 0; border-radius: 9px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    opacity: 0.05; pointer-events: none; mix-blend-mode: overlay;
+  }
+
+  .els .screw {
+    position: absolute; width: 7px; height: 7px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #4a4d54, #16171a 70%);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.06);
+    z-index: 5;
+  }
+  .els .screw::before {
+    content: ""; position: absolute; inset: 2px;
+    background: linear-gradient(45deg, transparent 43%, #0a0b0c 43%, #0a0b0c 57%, transparent 57%);
+  }
+  .els .screw.tl { top: 4px; left: 4px; }
+  .els .screw.tr { top: 4px; right: 4px; }
+  .els .screw.bl { bottom: 4px; left: 4px; }
+  .els .screw.br { bottom: 4px; right: 4px; }
+
+  /* ================ header: status LEDs + logo ================ */
+  .els .bar {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 4px; min-height: 16px;
+  }
+  .els .leds { display: flex; gap: 5px; align-items: center; }
+  .els .led {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--led-off);
+    box-shadow: inset 0 0 2px rgba(0,0,0,0.9);
+    transition: background .15s, box-shadow .15s;
+  }
+  .els.ready .led.pwr {
+    background: var(--led-green);
+    box-shadow: 0 0 5px var(--led-green), inset 0 0 1px #dfffe8;
+  }
+  .els .led.act.lit {
+    background: var(--led-amber);
+    box-shadow: 0 0 5px var(--led-amber), inset 0 0 1px #fff3d6;
+  }
+
+  .els .micro {
+    font-size: 7px; letter-spacing: 2px; color: var(--label-dim);
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .els .logo {
+    margin-left: auto;
+    display: flex; align-items: baseline; gap: 4px;
+    padding: 1px 9px 2px;
+    border: 1px solid var(--red); border-radius: 3px;
+    background: linear-gradient(180deg, #1c1d22, #101116);
+    box-shadow: 0 0 6px rgba(216,32,45,0.25), inset 0 1px 0 rgba(255,255,255,0.05);
+    font-style: italic; transform: skewX(-7deg);
+  }
+  .els .logo b { font-size: 13px; font-weight: 700; color: #f4f6f8; line-height: 1; text-shadow: 0 1px 1px rgba(0,0,0,.6); }
+  .els .logo span { font-size: 13px; font-weight: 700; color: var(--red); line-height: 1; }
+  .els .logo sup { font-style: normal; font-size: 6px; color: var(--label-dim); letter-spacing: 1px; margin-left: 1px; }
+
+  /* ================== lights slide switch ================== */
+  .els .lights {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 9px;
+    padding: 0 4px;
+  }
+  .els .lights .name {
+    font-size: 9px; font-weight: 600; letter-spacing: 2px;
+    color: var(--txt); text-transform: uppercase; white-space: nowrap;
+  }
+  .els .lswitch {
+    position: relative;
+    flex: 1 1 auto;
+    height: 26px;
+    border-radius: 5px;
+    background: linear-gradient(180deg, var(--recess-1), var(--recess-2));
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.9), inset 0 -1px 0 rgba(255,255,255,0.04);
+    cursor: pointer;
+    overflow: hidden;
+  }
+  /* the four detent labels along the track */
+  .els .lswitch .marks {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 13px;
+    font-size: 8px; letter-spacing: 1px; color: var(--label-dim);
+    pointer-events: none;
+  }
+  .els .lswitch .marks span.act { color: var(--green); text-shadow: 0 0 6px rgba(84,255,134,.7); }
+  /* sliding lever — animate left so the throw spans the full track */
+  .els .lswitch .lever {
+    position: absolute; top: 3px; bottom: 3px; left: 3px;
+    width: 34px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, #54585f 0%, #2c2f34 55%, #17191d 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 1px 3px rgba(0,0,0,0.8);
+  }
+  .els .lswitch .lever::before {
+    content: ""; position: absolute; left: 50%; top: 4px; bottom: 4px;
+    width: 2px; margin-left: -1px; border-radius: 1px;
+    background: #0c0d0f; box-shadow: 1px 0 0 rgba(255,255,255,0.12);
+  }
+  .els .lswitch.on .lever {
+    left: calc(100% - 37px);
+    background: linear-gradient(180deg, var(--green-hot) 0%, var(--green) 55%, var(--green-deep) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 0 12px rgba(84,255,134,0.7);
+  }
+  .els:not(.ready) .lswitch { cursor: default; opacity: .55; }
+
+  /* ==================== key bank ==================== */
+  .els .bank {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 7px;
+    padding: 0 2px;
+  }
+
+  .els .key {
+    position: relative;
+    min-width: 0; width: 100%; height: 100%;
+    margin: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 2px;
+    border: 2px solid var(--frame);
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--key-1) 0%, var(--key-2) 52%, var(--key-3) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      inset 0 -3px 5px rgba(0,0,0,0.45),
+      0 1px 2px rgba(0,0,0,0.6);
+    color: var(--txt);
+    font-size: 9.5px; font-weight: 600; letter-spacing: .8px; line-height: 1.05;
+    text-align: center; text-transform: uppercase;
+    white-space: pre-line;            /* honour \n in captions */
+    text-shadow: 0 1px 1px rgba(0,0,0,0.7);
+    cursor: pointer;
+    overflow: hidden;
+    animation: boot .55s ease-out both;
+  }
+  .els .key::before {
+    content: ""; position: absolute; left: 2px; right: 2px; top: 2px; height: 40%;
+    border-radius: 3px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0));
+    pointer-events: none;
+  }
+  .els .key:not(:disabled):active { transform: translateY(1px); }
+
+  /* engaged — same key, only the border colour changes to green */
+  .els .key.on {
+    border-color: var(--green);
+    color: var(--green-hot);
+  }
+
+  /* gated (lights off) and not-installed keys */
+  .els .key:disabled {
+    cursor: default;
+    border-color: var(--frame-lo);
+    color: var(--txt-dim);
+    background: linear-gradient(180deg, #26282c, #16181b);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -2px 4px rgba(0,0,0,0.5);
+  }
+  .els .key:disabled::before { opacity: .25; }
+
+  /* reserved/future keys: present but inert, faintly marked */
+  .els .key.soon {
+    cursor: default;
+    border-color: #34373c;
+    border-style: dashed;
+    color: #565a61;
+    background: linear-gradient(180deg, #212327, #141619);
+    box-shadow: inset 0 -2px 4px rgba(0,0,0,0.5);
+    animation: none;
+  }
+
+  /* power-on self-test sweep */
+  @keyframes boot {
+    0%, 42% { border-color: var(--green); box-shadow: 0 0 9px rgba(84,255,134,0.7), inset 0 0 6px rgba(84,255,134,0.25); }
+    100%    { }
+  }
+  .els .bank .key:nth-child(1)  { animation-delay: 0s; }
+  .els .bank .key:nth-child(2)  { animation-delay: .05s; }
+  .els .bank .key:nth-child(3)  { animation-delay: .10s; }
+  .els .bank .key:nth-child(4)  { animation-delay: .15s; }
+  .els .bank .key:nth-child(5)  { animation-delay: .20s; }
+
+  .bottom-gap {
+    height: 10px;
+    width: 100%;
+  }
+
+  /* ---- compact ---- */
+  @media (max-width: 320px) {
+    .els .logo b, .els .logo span { font-size: 11px; }
+    .els .key { font-size: 8px; letter-spacing: .4px; }
+    .els .bank { gap: 4px; }
+  }
+</style>
+
+<div class="bngApp els" ng-class="{ ready: els.installed }">
+  <div class="case">
+    <span class="screw tl"></span>
+    <span class="screw tr"></span>
+    <span class="screw bl"></span>
+    <span class="screw br"></span>
+
+    <!-- header -->
+    <div class="bar">
+      <div class="leds">
+        <span class="led pwr" title="power"></span>
+        <span class="led act" ng-class="{ lit: els.activeSiren > 0 || els.manualHeld }" title="active"></span>
+      </div>
+      <span class="micro">{{ els.installed ? 'PWR' : 'NO HEAD' }}</span>
+      <div class="logo"><b>ELS</b><span>CONTROL</span><sup>SM</sup></div>
+    </div>
+
+    <!-- lights slide switch (OFF · 1 · 2 · 3) -->
+    <div class="lights">
+      <span class="name">Lights</span>
+      <div class="lswitch" ng-class="{ on: els.stage > 0 }"
+           ng-click="els.installed && els.toggleLights()">
+        <div class="lever"></div>
+        <div class="marks">
+          <span ng-class="{ act: els.stage === 0 }">OFF</span>
+          <span>1</span>
+          <span>2</span>
+          <span ng-class="{ act: els.stage > 0 }">3</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- key bank -->
+    <div class="bank">
+      <!-- manual: hold to sound, works with lights off -->
+      <button class="key"
+              ng-class="{ on: els.manualHeld }"
+              ng-disabled="!els.installed"
+              ng-mousedown="els.manualStart()"
+              ng-mouseup="els.manualStop()"
+              ng-mouseleave="els.manualStop()"
+              title="Manual siren — hold to sound">MANUAL</button>
+
+      <!-- wired tones -->
+      <button class="key"
+              ng-repeat="siren in els.sirens track by siren.id"
+              ng-class="{ on: siren.active }"
+              ng-disabled="!els.installed || els.stage === 0"
+              ng-click="els.siren(siren.id)"
+              title="{{ siren.label }}">SIREN {{ siren.id }}</button>
+
+      <!-- wired standby -->
+      <button class="key"
+              ng-class="{ on: els.installed && els.activeSiren === 0 && !els.manualHeld }"
+              ng-disabled="!els.installed"
+              ng-click="els.standby()">STBY</button>
+
+      <!-- reserved for future features -->
+      <button class="key soon" ng-repeat="f in els.future" disabled>{{ f.tag }}</button>
+    </div>
+
+    <div class="bottom-gap"></div>
+  </div>
+</div>

@@ -1,0 +1,22 @@
+{
+  "domElement": "<els-visualizer></els-visualizer>",
+  "name": "ELS Controller",
+  "types": [
+    "ui.apps.categories.vehicle_control"
+  ],
+  "css": {
+    "left": "240px",
+    "bottom": "90px",
+    "width": "440px",
+    "height": "220px",
+    "min-width": "320px",
+    "min-height": "175px"
+  },
+  "description": "Emergency light and siren control head for ELS Controller",
+  "author": "OMouta",
+  "version": "0.1.0",
+  "directive": "elsVisualizer",
+  "category": "Vehicle",
+  "isAuxiliary": false,
+  "interactive": "optional"
+}

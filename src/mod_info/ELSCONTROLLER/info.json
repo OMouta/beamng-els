@@ -1,0 +1,29 @@
+{
+  "title": "ELS Controller",
+  "tag_line": "A proper emergency light and siren controller for BeamNG",
+  "version_string": "0.1.0",
+  "resource_category_id": 13,
+  "category_title": "Gameplay",
+  "prefix_title": "Alpha",
+  "description": "ELS Controller brings a more realistic emergency control head to BeamNG.drive, with quick siren changes, a hold-to-play manual tone, feedback beeps, per-vehicle setups, and a compact in-game panel.",
+  "authors": "OMouta",
+  "filename": "els_controller",
+  "icon": "icon.jpg",
+  "attachments": [
+    {
+      "thumb_filename": "thumbnail_1.jpg"
+    },
+    {
+      "thumb_filename": "thumbnail_2.jpg"
+    },
+    {
+      "thumb_filename": "thumbnail_3.jpg"
+    },
+    {
+      "thumb_filename": "thumbnail_4.jpg"
+    },
+    {
+      "thumb_filename": "thumbnail_5.jpg"
+    }
+  ]
+}

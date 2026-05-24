@@ -1,0 +1,48 @@
+{
+  "lights": {
+    "stages": [
+      "off",
+      "on"
+    ]
+  },
+  "feedback": {
+    "enabled": true,
+    "selected": "classic",
+    "variations": {
+      "classic": {
+        "sound": "art/sound/els_controller/beep_classic.wav",
+        "volume": 0.55
+      },
+      "high": {
+        "sound": "art/sound/els_controller/beep_high.wav",
+        "volume": 0.55
+      }
+    }
+  },
+  "sirens": [
+    {
+      "id": 1,
+      "label": "80s/90s Police Wail 1",
+      "soundscapeId": "soundscape_siren_3",
+      "volume": 1.0
+    },
+    {
+      "id": 2,
+      "label": "80s/90s Police Wail 2",
+      "soundscapeId": "soundscape_siren_4",
+      "volume": 1.0
+    },
+    {
+      "id": 3,
+      "label": "80s/90s Police Yelp 1",
+      "soundscapeId": "soundscape_siren_8",
+      "volume": 1.0
+    },
+    {
+      "id": 4,
+      "label": "Modern Police Hi-Lo",
+      "soundscapeId": "soundscape_siren_7",
+      "volume": 1.0
+    }
+  ]
+}

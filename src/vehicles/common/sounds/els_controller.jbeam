@@ -1,0 +1,47 @@
+{
+  "els_controller_siren_bank": {
+    "information": {
+      "authors": "OMouta",
+      "name": "ELS Controller",
+      "value": 50
+    },
+    "slotType": "soundscape_siren",
+    "slots2": [
+      ["name", "allowTypes", "denyTypes", "default", "description"],
+      ["els_feedback_beep", ["els_feedback_beep"], [], "els_feedback_beep_classic", "ELS Feedback Beep"],
+      ["els_siren_1", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_3", "ELS Siren 1"],
+      ["els_siren_2", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_4", "ELS Siren 2"],
+      ["els_siren_3", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_8", "ELS Siren 3"],
+      ["els_siren_4", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_7", "ELS Siren 4"],
+      ["els_siren_manual", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_3", "ELS Manual Siren"]
+    ],
+    "soundscape": [
+      ["name", "src"],
+      ["siren", ""]
+    ]
+  },
+  "els_feedback_beep_classic": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Classic Beep",
+      "value": 0
+    },
+    "slotType": "els_feedback_beep",
+    "elsFeedback": {
+      "sound": "art/sound/els_controller/beep_classic.wav",
+      "volume": 0.55
+    }
+  },
+  "els_feedback_beep_high": {
+    "information": {
+      "authors": "OMouta",
+      "name": "High Beep",
+      "value": 0
+    },
+    "slotType": "els_feedback_beep",
+    "elsFeedback": {
+      "sound": "art/sound/els_controller/beep_high.wav",
+      "volume": 0.55
+    }
+  }
+}

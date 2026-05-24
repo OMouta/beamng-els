@@ -1,0 +1,75 @@
+{
+  "els_lights_stage_up": {
+    "cat": "els_controller",
+    "order": 10,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.stageUp(VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS stage up",
+    "desc": "Move ELS emergency lights to the next stage"
+  },
+  "els_lights_stage_down": {
+    "cat": "els_controller",
+    "order": 11,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.stageDown(VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS stage down",
+    "desc": "Move ELS emergency lights to the previous stage"
+  },
+  "els_siren_1": {
+    "cat": "els_controller",
+    "order": 20,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.activateSiren(1, VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS siren 1",
+    "desc": "Toggle or switch to ELS siren 1"
+  },
+  "els_siren_2": {
+    "cat": "els_controller",
+    "order": 21,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.activateSiren(2, VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS siren 2",
+    "desc": "Toggle or switch to ELS siren 2"
+  },
+  "els_siren_3": {
+    "cat": "els_controller",
+    "order": 22,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.activateSiren(3, VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS siren 3",
+    "desc": "Toggle or switch to ELS siren 3"
+  },
+  "els_siren_4": {
+    "cat": "els_controller",
+    "order": 23,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.activateSiren(4, VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS siren 4",
+    "desc": "Toggle or switch to ELS siren 4"
+  },
+  "els_siren_manual": {
+    "cat": "els_controller",
+    "order": 24,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.startManual(VALUE, FILTERTYPE)",
+    "onUp": "elsControllerVE.stopManual(VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS manual siren",
+    "desc": "Hold to play the ELS manual siren"
+  },
+  "els_siren_off": {
+    "cat": "els_controller",
+    "order": 25,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.stopSiren(VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS siren off",
+    "desc": "Stop the active ELS siren"
+  }
+}
