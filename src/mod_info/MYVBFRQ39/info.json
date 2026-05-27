@@ -1,0 +1,97 @@
+{
+    "attachments": [
+        {
+            "data_filename": "1303568.jpg",
+            "original_filename": "thumbnail_5.jpg",
+            "thumb_filename": "thumbs\/1303568.jpg"
+        },
+        {
+            "data_filename": "1303569.jpg",
+            "original_filename": "thumbnail_4.jpg",
+            "thumb_filename": "thumbs\/1303569.jpg"
+        },
+        {
+            "data_filename": "1303571.jpg",
+            "original_filename": "thumbnail_3.jpg",
+            "thumb_filename": "thumbs\/1303571.jpg"
+        }
+    ],
+    "resource_id": 38093,
+    "current_version_id": 69110,
+    "download_count": 0,
+    "resource_version_id": 69110,
+    "version_string": "0.1.0",
+    "last_update": 1779644711,
+    "rating_avg": 0,
+    "rating_count": 0,
+    "rating_sum": 0,
+    "resource_category_id": 10,
+    "resource_date": 1779644711,
+    "review_count": 0,
+    "tag_line": "A proper emergency light and siren controller for BeamNG",
+    "update_count": 0,
+    "path": "MYVBFRQ39\/69110\/",
+    "filename": "els_controller.zip",
+    "title": "ELS Controller",
+    "user_id": 798344,
+    "username": "OMouta",
+    "tagid": "MYVBFRQ39",
+    "message": "[ATTACH]1303573[\/ATTACH]\n\nELS Controller gives your emergency vehicles a more natural way to run lights and sirens, with quick tone changes, a hold-to-play manual siren, feedback beeps, and a compact in-game controller inspired by real ELS panels.\n\n[ATTACH]1303571[\/ATTACH] \n\n[B]What It Adds[\/B]\n[LIST]\n[*]A clean emergency light on\/off control\n[*]Four quick-select siren buttons\n[*]A momentary manual siren\n[*]A standby button to cut the active siren\n[*]Feedback beeps when changing controls\n[*]A compact dashboard-style UI app\n[*]Per-vehicle siren choices saved with your configs\n[\/LIST]\n\n[B]In-Game Controller\n\n[ATTACH]1303572[\/ATTACH] [\/B]\n\nThe included UI app gives you a small ELS-style control panel on screen. It shows whether the controller is installed, whether the lights are active, which siren is selected, and when the manual tone is being held.\n\nYou can use it with your mouse or bind everything to keys and use it as a visual reference while driving.\n\n[B]Setup\n\n[ATTACH]1303568[\/ATTACH] [\/B]\n\nAdd `ELS Controller` to the vehicle's `Siren Audio` slot, then choose the sirens and feedback beep you want from the parts selector.\n\nAfter that, bind the ELS controls from the controls menu and add the `ELS Controller` UI app if you want the on-screen panel.\n\nEach vehicle config can keep its own siren setup, so your cruiser, ambulance, and tow truck do not all need to sound the same.\n\n[ATTACH]1303569[\/ATTACH] \n\n[B]License[\/B]\n\nThis mod is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 license. You are free to share and adapt this mod, but you must give appropriate credit, may not use it for commercial purposes, and must distribute your contributions under the same license.",
+    "category_title": "",
+    "prefix_title": "Alpha",
+    "via": "packed by repo on Mon, 25 May 2026 01:02:45 GMT",
+    "hashes": [
+        [
+            "lua\/vehicle\/extensions\/auto\/elsControllerVE.lua",
+            "31da8911fa569d95"
+        ],
+        [
+            "lua\/ge\/extensions\/elsController.lua",
+            "d36a8ec00dfbfdc1"
+        ],
+        [
+            "lua\/ge\/extensions\/core\/input\/actions\/input_actions_els_controller.json",
+            "da44f52d4b519ad2"
+        ],
+        [
+            "lua\/ge\/extensions\/core\/input\/categories.lua",
+            "17623db1034aad01"
+        ],
+        [
+            "ui\/modules\/apps\/ELSVisualizer\/app.js",
+            "c2504dd4fa8c2532"
+        ],
+        [
+            "ui\/modules\/apps\/ELSVisualizer\/app.html",
+            "4dbbe1120f3ff036"
+        ],
+        [
+            "ui\/modules\/apps\/ELSVisualizer\/app.json",
+            "5fdee4660f9db3dc"
+        ],
+        [
+            "art\/sound\/els_controller\/beep_high.wav",
+            "bd7b166c8df1dbd8"
+        ],
+        [
+            "art\/sound\/els_controller\/beep_classic.wav",
+            "b0752c228f978e23"
+        ],
+        [
+            "vehicles\/common\/sounds\/els_controller.jbeam",
+            "c98801a4b2ad0e11"
+        ],
+        [
+            "settings\/els_controller\/default_config.json",
+            "ee7cd5d5e90f934b"
+        ],
+        [
+            "settings\/els_controller\/vehicles\/pickup\/default.json",
+            "726681b7ba56f06d"
+        ],
+        [
+            "settings\/els_controller\/vehicles\/fullsize\/police.json",
+            "9ae39a75135ceb73"
+        ]
+    ]
+}

@@ -23,6 +23,7 @@ $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("beamng_mod_pack_" + [S
 $stage = Join-Path $tempRoot $modName
 
 $excludedDirectories = @(
+  "mod_info",
   "node_modules"
 )
 
