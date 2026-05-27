@@ -1,17 +1,17 @@
 local M = {}
 
 local function registerInputCategory()
-  if not core_input_categories then
-    return
+  if core_input_categories then
+    core_input_categories.els_controller = {
+      desc = "Emergency lighting and siren controls",
+      order = 1.8,
+      title = "ELS Controller",
+      icon = "warning"
+    }
   end
-
-  core_input_categories.els_controller = core_input_categories.els_controller or {
-    order = 2.1,
-    icon = "warning",
-    title = "ELS Controller",
-    desc = "Emergency lighting and siren controls"
-  }
 end
+
+registerInputCategory()
 
 local function onExtensionLoaded()
   registerInputCategory()

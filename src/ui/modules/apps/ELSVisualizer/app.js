@@ -10,6 +10,7 @@ angular.module('beamng.apps')
       var vm = this
       var timer = null
 
+      vm.visible = false
       vm.installed = false
       vm.stage = 0
       vm.activeSiren = 0
@@ -32,10 +33,15 @@ angular.module('beamng.apps')
 
       function update() {
         bngApi.activeObjectLua('elsControllerVE.getVisualizerState()', function (state) {
-          if (!state) return
-
           $scope.$evalAsync(function () {
+            if (!state) {
+              vm.visible = false
+              vm.installed = false
+              return
+            }
+
             vm.installed = !!state.controllerInstalled
+            vm.visible = vm.installed
             vm.stage = state.stage || 0
             vm.activeSiren = state.activeSiren || 0
             vm.manualHeld = !!state.manualActive

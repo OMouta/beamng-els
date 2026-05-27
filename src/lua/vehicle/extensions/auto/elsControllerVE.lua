@@ -14,6 +14,7 @@ local stopSiren
 local playSiren
 local stopManual
 local lastObservedLightbarState = nil
+local warned = {}
 
 local config = {
   lights = { stages = { "off", "on" } },
@@ -33,12 +34,64 @@ local config = {
   }
 }
 
+local function warnOnce(key, message)
+  if warned[key] then
+    return
+  end
+
+  warned[key] = true
+  log("W", "elsControllerVE", message)
+end
+
+local function ensureElectricsValues()
+  if electrics then
+    electrics.values = electrics.values or {}
+    return electrics.values
+  end
+
+  return {}
+end
+
+local function safeFirstPlayerSeated()
+  return playerInfo and playerInfo.firstPlayerSeated
+end
+
+local function safeSfxCall(name, sourceId, ...)
+  if not sourceId or not obj or not obj[name] then
+    return false
+  end
+
+  local args = { ... }
+  local ok, err = pcall(function()
+    obj[name](obj, sourceId, unpack(args))
+  end)
+  if not ok then
+    warnOnce("sfx_" .. name .. "_" .. tostring(sourceId), "Unable to run " .. name .. " for ELS sound source: " .. tostring(err))
+    return false
+  end
+
+  return true
+end
+
+local function safeDeleteSource(source, key)
+  if not source or not source.id or not obj or not obj.deleteSFXSource then
+    return
+  end
+
+  local ok, err = pcall(function()
+    obj:deleteSFXSource(source.id)
+  end)
+  if not ok then
+    warnOnce("delete_" .. tostring(key or source.id), "Unable to delete ELS sound source: " .. tostring(err))
+  end
+end
+
 local function getVehicleModel()
-  return v.data.model or (v.vehicleDirectory and v.vehicleDirectory:match("/vehicles/([^/]+)")) or "unknown"
+  return (v and v.data and v.data.model) or (v and v.vehicleDirectory and v.vehicleDirectory:match("/vehicles/([^/]+)")) or "unknown"
 end
 
 local function getVehicleConfigName()
-  if not v.config.partConfigFilename then
+  if not v or not v.config or not v.config.partConfigFilename then
     return "default"
   end
 
@@ -212,10 +265,11 @@ local function isPartInTree(node, partName)
 end
 
 local function updateControllerInstalled()
-  controllerInstalled = isPartInTree(v.config.partsTree, "els_controller_siren_bank")
+  local vehicleConfig = v and v.config or {}
+  controllerInstalled = isPartInTree(vehicleConfig.partsTree, "els_controller_siren_bank")
 
-  if not controllerInstalled and v.config.parts then
-    for _, selectedPart in pairs(v.config.parts) do
+  if not controllerInstalled and vehicleConfig.parts then
+    for _, selectedPart in pairs(vehicleConfig.parts) do
       if selectedPart == "els_controller_siren_bank" then
         controllerInstalled = true
         break
@@ -231,15 +285,16 @@ local function updateControllerInstalled()
 end
 
 local function getSelectedPart(slotId)
+  local vehicleConfig = v and v.config or {}
 
-  if v.config.parts then
-    local selectedPart = v.config.parts[slotId]
+  if vehicleConfig.parts then
+    local selectedPart = vehicleConfig.parts[slotId]
     if selectedPart and selectedPart ~= "" and selectedPart ~= "none" then
       return selectedPart
     end
   end
 
-  return findChosenPartInTree(v.config.partsTree, slotId)
+  return findChosenPartInTree(vehicleConfig.partsTree, slotId)
 end
 
 local function getSelectedSirenPart(index)
@@ -247,6 +302,8 @@ local function getSelectedSirenPart(index)
 end
 
 local function applyPartSelectedFeedback()
+  config.feedback = config.feedback or {}
+
   local selectedPart = getSelectedPart("els_feedback_beep")
   if not selectedPart then
     return
@@ -255,11 +312,10 @@ local function applyPartSelectedFeedback()
   local feedbackCatalog = buildFeedbackCatalog()
   local selectedFeedback = feedbackCatalog[selectedPart]
   if not selectedFeedback then
-    log("W", "elsControllerVE", "Missing ELS feedback part: " .. selectedPart)
+    warnOnce("missing_feedback_part_" .. selectedPart, "Missing ELS feedback part: " .. selectedPart)
     return
   end
 
-  config.feedback = config.feedback or {}
   config.feedback.beep = {
     sound = selectedFeedback.sound,
     volume = selectedFeedback.volume
@@ -273,6 +329,7 @@ local function applyPartSelectedSirens()
     return
   end
 
+  config.sirens = config.sirens or {}
   applyPartSelectedFeedback()
 
   for index = 1, 4 do
@@ -284,7 +341,7 @@ local function applyPartSelectedSirens()
 
       local oldSource = sirenSources[index]
       if oldSource then
-        obj:deleteSFXSource(oldSource.id)
+        safeDeleteSource(oldSource, "siren_" .. index)
         sirenSources[index] = nil
       end
 
@@ -297,7 +354,13 @@ local function applyPartSelectedSirens()
 end
 
 local function getRefNode()
-  return v.data.refNodes[0].ref
+  local refNodes = v and v.data and v.data.refNodes
+  local refNode = refNodes and ((refNodes[0] and refNodes[0].ref) or (refNodes[1] and refNodes[1].ref))
+  if not refNode then
+    warnOnce("missing_ref_node", "Unable to create ELS sound source because this vehicle has no usable ref node")
+  end
+
+  return refNode
 end
 
 local function getFeedbackConfig()
@@ -322,25 +385,38 @@ local function playFeedback()
   end
 
   if feedback.sound:sub(1, 6) ~= "event:" and not FS:fileExists(feedback.sound) then
-    log("W", "elsControllerVE", "Missing ELS feedback sound: " .. feedback.sound)
+    warnOnce("missing_feedback_sound_" .. feedback.sound, "Missing ELS feedback sound: " .. feedback.sound)
     return
   end
 
   if not feedbackSources.beep or feedbackSources.beep.sound ~= feedback.sound then
     if feedbackSources.beep then
-      obj:deleteSFXSource(feedbackSources.beep.id)
+      safeDeleteSource(feedbackSources.beep, "feedback")
+    end
+
+    local refNode = getRefNode()
+    if not refNode then
+      return
+    end
+
+    local ok, sourceId = pcall(function()
+      return obj:createSFXSource2(feedback.sound, "AudioDefault3D", "els_feedback_" .. obj:getID(), refNode, 0)
+    end)
+    if not ok or not sourceId then
+      warnOnce("create_feedback_" .. feedback.sound, "Unable to create ELS feedback sound source: " .. tostring(sourceId))
+      return
     end
 
     feedbackSources.beep = {
       sound = feedback.sound,
-      id = obj:createSFXSource2(feedback.sound, "AudioDefault3D", "els_feedback_" .. obj:getID(), getRefNode(), 0)
+      id = sourceId
     }
   end
 
   local source = feedbackSources.beep
-  obj:cutSFX(source.id)
-  obj:setVolume(source.id, feedback.volume or 0.55)
-  obj:playSFX(source.id)
+  safeSfxCall("cutSFX", source.id)
+  safeSfxCall("setVolume", source.id, feedback.volume or 0.55)
+  safeSfxCall("playSFX", source.id)
 end
 
 local function normalizeLightbarState(stage)
@@ -354,10 +430,11 @@ end
 
 local function applyLightStageValues(stage)
   stage = normalizeLightbarState(stage)
+  local values = ensureElectricsValues()
 
-  electrics.values.elsLightsStage = stage
-  electrics.values.lightbarSignal = stage
-  electrics.values.emergencyLights = stage
+  values.elsLightsStage = stage
+  values.lightbarSignal = stage
+  values.emergencyLights = stage
 end
 
 local function setVehicleLightbarState(stage)
@@ -367,7 +444,7 @@ local function setVehicleLightbarState(stage)
     electrics.set_lightbar_signal(stage)
   end
 
-  electrics.values.lightbar = stage
+  ensureElectricsValues().lightbar = stage
   applyLightStageValues(stage)
   lastObservedLightbarState = stage
 end
@@ -392,18 +469,30 @@ local function ensureSirenSource(index)
 
   local entry = sirenCatalogById[siren.soundscapeId]
   if not entry then
-    log("W", "elsControllerVE", "Missing siren soundscape: " .. tostring(siren.soundscapeId))
+    warnOnce("missing_siren_soundscape_" .. tostring(siren.soundscapeId), "Missing siren soundscape: " .. tostring(siren.soundscapeId))
     return nil
   end
 
   local path = entry.source
   if path:sub(1, 6) ~= "event:" and not FS:fileExists(path) then
-    log("W", "elsControllerVE", "Missing sound for " .. entry.name .. ": " .. path)
+    warnOnce("missing_siren_sound_" .. tostring(path), "Missing sound for " .. entry.name .. ": " .. path)
+    return nil
+  end
+
+  local refNode = getRefNode()
+  if not refNode then
     return nil
   end
 
   local profileName = "els_siren_" .. index .. "_" .. tostring(siren.soundscapeId) .. "_" .. obj:getID()
-  local source = obj:createSFXSource2(path, "AudioDefaultLoop3D", profileName, getRefNode(), 0)
+  local ok, source = pcall(function()
+    return obj:createSFXSource2(path, "AudioDefaultLoop3D", profileName, refNode, 0)
+  end)
+  if not ok or not source then
+    warnOnce("create_siren_" .. tostring(siren.soundscapeId), "Unable to create ELS siren source for " .. tostring(siren.soundscapeId) .. ": " .. tostring(source))
+    return nil
+  end
+
   sirenSources[index] = {
     id = source,
     label = entry.name,
@@ -420,17 +509,17 @@ stopSiren = function()
 
   local source = sirenSources[activeSiren]
   if source then
-    obj:stopSFX(source.id)
+    safeSfxCall("stopSFX", source.id)
   end
 
-  electrics.values.elsSiren = 0
+  ensureElectricsValues().elsSiren = 0
   activeSiren = 0
 end
 
 playSiren = function(index)
   local source = ensureSirenSource(index)
   if not source then
-    if controllerInstalled and playerInfo.firstPlayerSeated then
+    if controllerInstalled and safeFirstPlayerSeated() then
       ui_message("ELS siren " .. index .. " is not configured for this vehicle", 3, 0, 1)
     end
     return
@@ -439,10 +528,10 @@ playSiren = function(index)
   stopSiren()
   playFeedback()
   activeSiren = index
-  electrics.values.elsSiren = index
-  obj:cutSFX(source.id)
-  obj:setVolume(source.id, source.volume)
-  obj:playSFX(source.id)
+  ensureElectricsValues().elsSiren = index
+  safeSfxCall("cutSFX", source.id)
+  safeSfxCall("setVolume", source.id, source.volume)
+  safeSfxCall("playSFX", source.id)
 end
 
 -- The manual tone is a momentary "air-horn" style override: it has its own
@@ -460,7 +549,7 @@ local function applyManualPart()
   local selectedPart = getSelectedPart("els_siren_manual")
   if selectedPart and selectedPart ~= "" and manualLoadedPart ~= selectedPart then
     if manualSource then
-      obj:deleteSFXSource(manualSource.id)
+      safeDeleteSource(manualSource, "manual")
       manualSource = nil
     end
     config.manual.soundscapeId = selectedPart
@@ -485,18 +574,30 @@ local function ensureManualSource()
 
   local entry = sirenCatalogById[config.manual.soundscapeId]
   if not entry then
-    log("W", "elsControllerVE", "Missing manual soundscape: " .. tostring(config.manual.soundscapeId))
+    warnOnce("missing_manual_soundscape_" .. tostring(config.manual.soundscapeId), "Missing manual soundscape: " .. tostring(config.manual.soundscapeId))
     return nil
   end
 
   local path = entry.source
   if path:sub(1, 6) ~= "event:" and not FS:fileExists(path) then
-    log("W", "elsControllerVE", "Missing sound for manual: " .. path)
+    warnOnce("missing_manual_sound_" .. tostring(path), "Missing sound for manual: " .. path)
+    return nil
+  end
+
+  local refNode = getRefNode()
+  if not refNode then
     return nil
   end
 
   local profileName = "els_manual_" .. tostring(config.manual.soundscapeId) .. "_" .. obj:getID()
-  local source = obj:createSFXSource2(path, "AudioDefaultLoop3D", profileName, getRefNode(), 0)
+  local ok, source = pcall(function()
+    return obj:createSFXSource2(path, "AudioDefaultLoop3D", profileName, refNode, 0)
+  end)
+  if not ok or not source then
+    warnOnce("create_manual_" .. tostring(config.manual.soundscapeId), "Unable to create ELS manual source for " .. tostring(config.manual.soundscapeId) .. ": " .. tostring(source))
+    return nil
+  end
+
   manualSource = {
     id = source,
     label = entry.name,
@@ -513,7 +614,7 @@ local function startManual()
 
   local source = ensureManualSource()
   if not source then
-    if controllerInstalled and playerInfo.firstPlayerSeated then
+    if controllerInstalled and safeFirstPlayerSeated() then
       ui_message("ELS manual siren is not configured for this vehicle", 3, 0, 1)
     end
     return
@@ -522,17 +623,17 @@ local function startManual()
   -- Manual overrides any playing tone and does not require the lights to be on.
   stopSiren()
   playFeedback()
-  electrics.values.elsManual = 1
-  obj:cutSFX(source.id)
-  obj:setVolume(source.id, source.volume)
-  obj:playSFX(source.id)
+  ensureElectricsValues().elsManual = 1
+  safeSfxCall("cutSFX", source.id)
+  safeSfxCall("setVolume", source.id, source.volume)
+  safeSfxCall("playSFX", source.id)
 end
 
 stopManual = function()
   if manualSource then
-    obj:stopSFX(manualSource.id)
+    safeSfxCall("stopSFX", manualSource.id)
   end
-  electrics.values.elsManual = 0
+  ensureElectricsValues().elsManual = 0
 end
 
 local function manualSiren(value, filtertype)
@@ -557,7 +658,8 @@ local function setLightStage(stage)
 end
 
 local function toggleVehicleLightbar()
-  local currentStage = electrics.values.elsLightsStage or electrics.values.lightbar or electrics.values.lightbarSignal or 0
+  local values = ensureElectricsValues()
+  local currentStage = values.elsLightsStage or values.lightbar or values.lightbarSignal or 0
   local nextStage = normalizeLightbarState(currentStage) > 0 and 0 or 1
 
   setLightStage(nextStage)
@@ -569,7 +671,7 @@ local function syncFromStockLightbar()
     return
   end
 
-  local stockStage = normalizeLightbarState(electrics.values.lightbar)
+  local stockStage = normalizeLightbarState(ensureElectricsValues().lightbar)
   if lastObservedLightbarState == nil then
     lastObservedLightbarState = stockStage
   end
@@ -612,7 +714,7 @@ local function activateSiren(index, value, filtertype)
     return
   end
 
-  if (electrics.values.elsLightsStage or 0) == 0 then
+  if (ensureElectricsValues().elsLightsStage or 0) == 0 then
     return
   end
 
@@ -636,7 +738,7 @@ local function setSiren(index, soundscapeId)
 
   local oldSource = sirenSources[index]
   if oldSource then
-    obj:deleteSFXSource(oldSource.id)
+    safeDeleteSource(oldSource, "siren_" .. index)
     sirenSources[index] = nil
   end
 
@@ -651,6 +753,7 @@ local function getVisualizerState()
   syncFromStockLightbar()
   updateControllerInstalled()
   applyPartSelectedSirens()
+  local values = ensureElectricsValues()
 
   local sirens = {}
   for index = 1, 4 do
@@ -667,9 +770,9 @@ local function getVisualizerState()
 
   return {
     controllerInstalled = controllerInstalled,
-    stage = electrics.values.elsLightsStage or electrics.values.lightbar or 0,
+    stage = values.elsLightsStage or values.lightbar or 0,
     activeSiren = activeSiren,
-    manualActive = (electrics.values.elsManual or 0) > 0,
+    manualActive = (values.elsManual or 0) > 0,
     sirens = sirens
   }
 end
@@ -695,10 +798,11 @@ local function onExtensionLoaded()
   updateControllerInstalled()
   applyPartSelectedSirens()
   sirenCatalogById = buildSirenCatalog()
-  lastObservedLightbarState = normalizeLightbarState(electrics.values.lightbar)
+  local values = ensureElectricsValues()
+  lastObservedLightbarState = normalizeLightbarState(values.lightbar)
   applyLightStageValues(lastObservedLightbarState)
-  electrics.values.elsSiren = electrics.values.elsSiren or 0
-  electrics.values.elsManual = electrics.values.elsManual or 0
+  values.elsSiren = values.elsSiren or 0
+  values.elsManual = values.elsManual or 0
   log("I", "elsControllerVE", "ELS Controller vehicle extension loaded")
 end
 
