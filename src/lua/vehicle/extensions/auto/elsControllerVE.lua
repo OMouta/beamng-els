@@ -1163,7 +1163,13 @@ local function syncFromStockLightbar()
     return
   end
 
-  local stockSignal = normalizeLightbarState(ensureElectricsValues().lightbar)
+  local values = ensureElectricsValues()
+  local stockSignal = normalizeLightbarState(values.lightbar)
+  if stockSignal > 1 then
+    setLightbarSignal(true)
+    stockSignal = 1
+  end
+
   if lastObservedLightbarState == nil then
     lastObservedLightbarState = stockSignal
   end
@@ -1175,6 +1181,9 @@ local function syncFromStockLightbar()
   lastObservedLightbarState = stockSignal
   local stockStage = stockSignal > 0 and getSirenStage() or 0
   applyLightStageValues(stockStage)
+  if stockStage > 0 and getMaxStage() > 1 then
+    setLightbarModeIndex(getModeIndexForStage(stockStage))
+  end
 
   if stockStage == 0 then
     stopAllSirens()
@@ -1254,7 +1263,7 @@ end
 local function setStageLightbarMode(stage, modeIndex)
   stage = normalizeLightbarState(stage)
   modeIndex = math.max(normalizeLightbarState(modeIndex), 1)
-  if stage < 1 or stage > 3 then
+  if stage < 1 then
     return
   end
 
@@ -1265,11 +1274,17 @@ local function setStageLightbarMode(stage, modeIndex)
     { label = "STAGE 2", modeIndex = 2 },
     { label = "STAGE 3", modeIndex = 3 }
   }
+  for stageIndex = 1, stage do
+    config.lights.stages[stageIndex + 1] = config.lights.stages[stageIndex + 1] or {
+      label = "STAGE " .. stageIndex,
+      modeIndex = stageIndex
+    }
+  end
   config.lights.stages[stage + 1] = {
     label = "STAGE " .. stage,
     modeIndex = modeIndex
   }
-  config.lights.sirenStage = 3
+  config.lights.sirenStage = math.max(normalizeLightbarState(config.lights.sirenStage or 0), stage)
 
   if getCurrentElsStage() == stage then
     setLightbarModeIndex(modeIndex)
