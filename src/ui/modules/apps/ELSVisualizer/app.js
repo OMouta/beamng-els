@@ -14,18 +14,19 @@ angular.module('beamng.apps')
       vm.installed = false
       vm.stage = 0
       vm.activeSiren = 0
+      vm.activeDualSiren = 0
+      vm.dualArmed = false
       vm.manualHeld = false
       // label holds the real mounted-tone name, shown as the key's tooltip.
       vm.sirens = [
-        { id: 1, active: false, label: 'Siren 1' },
-        { id: 2, active: false, label: 'Siren 2' },
-        { id: 3, active: false, label: 'Siren 3' },
-        { id: 4, active: false, label: 'Siren 4' }
+        { id: 1, active: false, dualActive: false, label: 'Siren 1' },
+        { id: 2, active: false, dualActive: false, label: 'Siren 2' },
+        { id: 3, active: false, dualActive: false, label: 'Siren 3' },
+        { id: 4, active: false, dualActive: false, label: 'Siren 4' }
       ]
 
       // Reserved keys for upcoming features — rendered but inert until wired.
       vm.future = [
-        { tag: 'TAKE\nDOWN' },
         { tag: 'LEFT\nALLEY' },
         { tag: 'RIGHT\nALLEY' },
         { tag: 'TRAF\nADV' }
@@ -44,24 +45,38 @@ angular.module('beamng.apps')
             vm.visible = vm.installed
             vm.stage = state.stage || 0
             vm.activeSiren = state.activeSiren || 0
+            vm.activeDualSiren = state.activeDualSiren || 0
             vm.manualHeld = !!state.manualActive
+            if (!vm.installed || vm.stage === 0) vm.dualArmed = false
             if (state.sirens) vm.sirens = state.sirens
           })
         })
       }
 
       vm.toggleLights = function () {
+        vm.dualArmed = false
         bngApi.activeObjectLua('elsControllerVE.stageUp(1, nil)')
         update()
       }
 
       vm.siren = function (id) {
-        bngApi.activeObjectLua('elsControllerVE.activateSiren(' + id + ', 1, nil)')
+        if (vm.dualArmed) {
+          vm.dualArmed = false
+          bngApi.activeObjectLua('elsControllerVE.toggleDualSiren(' + id + ')')
+        } else {
+          bngApi.activeObjectLua('elsControllerVE.activateSiren(' + id + ', 1, nil)')
+        }
         update()
       }
 
+      vm.dual = function () {
+        if (!vm.installed || vm.stage === 0) return
+        vm.dualArmed = !vm.dualArmed
+      }
+
       vm.standby = function () {
-        bngApi.activeObjectLua('elsControllerVE.stopSiren()')
+        vm.dualArmed = false
+        bngApi.activeObjectLua('elsControllerVE.stopAllSirens()')
         update()
       }
 

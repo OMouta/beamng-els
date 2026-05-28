@@ -24,6 +24,8 @@
     --green: #54ff86;
     --green-hot: #c9ffd9;
     --green-deep: #16c24e;
+    --blue: #42a5ff;
+    --blue-hot: #d3ecff;
     --red: #d8202d;
     --label-dim: #6c7077;
     --led-green: #5dff8a;
@@ -215,6 +217,18 @@
     border-color: var(--green);
     color: var(--green-hot);
   }
+  .els .key.dual-wait,
+  .els .key.dual-on {
+    border-color: var(--blue);
+    color: var(--blue-hot);
+  }
+  .els .key.on.dual-on {
+    border-top-color: var(--green);
+    border-left-color: var(--green);
+    border-right-color: var(--blue);
+    border-bottom-color: var(--blue);
+    color: var(--green-hot);
+  }
 
   /* gated (lights off) and not-installed keys */
   .els .key:disabled {
@@ -272,7 +286,7 @@
     <div class="bar">
       <div class="leds">
         <span class="led pwr" title="power"></span>
-        <span class="led act" ng-class="{ lit: els.activeSiren > 0 || els.manualHeld }" title="active"></span>
+        <span class="led act" ng-class="{ lit: els.activeSiren > 0 || els.activeDualSiren > 0 || els.manualHeld }" title="active"></span>
       </div>
       <span class="micro">{{ els.installed ? 'PWR' : 'NO HEAD' }}</span>
       <div class="logo"><b>ELS</b><span>CONTROL</span><sup>SM</sup></div>
@@ -307,16 +321,22 @@
       <!-- wired tones -->
       <button class="key"
               ng-repeat="siren in els.sirens track by siren.id"
-              ng-class="{ on: siren.active }"
+              ng-class="{ on: siren.active, 'dual-on': siren.dualActive }"
               ng-disabled="!els.installed || els.stage === 0"
               ng-click="els.siren(siren.id)"
               title="{{ siren.label }}">SIREN {{ siren.id }}</button>
 
       <!-- wired standby -->
       <button class="key"
-              ng-class="{ on: els.installed && els.activeSiren === 0 && !els.manualHeld }"
+              ng-class="{ on: els.installed && els.activeSiren === 0 && els.activeDualSiren === 0 && !els.manualHeld }"
               ng-disabled="!els.installed"
               ng-click="els.standby()">STBY</button>
+
+      <!-- dual selector -->
+      <button class="key"
+              ng-class="{ on: els.activeDualSiren > 0 && !els.dualArmed, 'dual-wait': els.dualArmed }"
+              ng-disabled="!els.installed || els.stage === 0"
+              ng-click="els.dual()">DUAL</button>
 
       <!-- reserved for future features -->
       <button class="key soon" ng-repeat="f in els.future" disabled>{{ f.tag }}</button>

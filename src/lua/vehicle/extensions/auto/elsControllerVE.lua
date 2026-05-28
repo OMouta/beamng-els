@@ -1,7 +1,10 @@
 local M = {}
 
 local activeSiren = 0
+local activeDualSiren = 0
+local dualModifierHeld = false
 local sirenSources = {}
+local dualSirenSources = {}
 local manualSource = nil
 local manualLoadedPart = nil
 local sirenCatalogById = nil
@@ -11,6 +14,8 @@ local loadedPartSirens = {}
 local controllerInstalled = false
 local feedbackSources = {}
 local stopSiren
+local stopDualSiren
+local stopAllSirens
 local playSiren
 local stopManual
 local lastObservedLightbarState = nil
@@ -360,7 +365,7 @@ local function updateControllerInstalled()
   end
 
   if not controllerInstalled then
-    stopSiren()
+    stopAllSirens()
   end
 
   return controllerInstalled
@@ -420,11 +425,20 @@ local function applyPartSelectedSirens()
       if activeSiren == index then
         stopSiren()
       end
+      if activeDualSiren == index then
+        stopDualSiren()
+      end
 
       local oldSource = sirenSources[index]
       if oldSource then
         safeDeleteSource(oldSource, "siren_" .. index)
         sirenSources[index] = nil
+      end
+
+      local oldDualSource = dualSirenSources[index]
+      if oldDualSource then
+        safeDeleteSource(oldDualSource, "dual_siren_" .. index)
+        dualSirenSources[index] = nil
       end
 
       config.sirens[index].soundscapeId = selectedPart
@@ -572,15 +586,15 @@ local function setVehicleLightbarState(stage)
   lastObservedLightbarState = stage
 end
 
-local function ensureSirenSource(index)
+local function createSirenSource(index, role, targetSources)
   applyPartSelectedSirens()
 
   if not controllerInstalled then
     return nil
   end
 
-  if sirenSources[index] then
-    return sirenSources[index]
+  if targetSources[index] then
+    return targetSources[index]
   end
 
   local siren = config.sirens[index]
@@ -592,40 +606,40 @@ local function ensureSirenSource(index)
 
   local entry = sirenCatalogById[siren.soundscapeId]
   if not entry then
-    warnOnce("missing_siren_soundscape_" .. tostring(siren.soundscapeId), "Missing siren soundscape: " .. tostring(siren.soundscapeId))
+    warnOnce("missing_" .. role .. "_soundscape_" .. tostring(siren.soundscapeId), "Missing siren soundscape: " .. tostring(siren.soundscapeId))
     return nil
   end
 
-  local path = resolveSoundPath(entry.source, "unverified_siren_sound_" .. tostring(siren.soundscapeId), entry.name)
+  local path = resolveSoundPath(entry.source, "unverified_" .. role .. "_sound_" .. tostring(siren.soundscapeId), entry.name)
 
   local refNode = getFrontCenterNodeRef()
   if not refNode then
     return nil
   end
 
-  local profileName = "els_siren_" .. index .. "_" .. tostring(siren.soundscapeId) .. "_" .. obj:getID()
+  local profileName = "els_" .. role .. "_" .. index .. "_" .. tostring(siren.soundscapeId) .. "_" .. obj:getID()
   local ok, source = pcall(function()
     return obj:createSFXSource2(path, "AudioDefaultLoop3D", profileName, refNode, 0)
   end)
   if not ok or not source then
-    warnOnce("create_siren_" .. tostring(siren.soundscapeId), "Unable to create ELS siren source for " .. tostring(siren.soundscapeId) .. ": " .. tostring(source))
+    warnOnce("create_" .. role .. "_" .. tostring(siren.soundscapeId), "Unable to create ELS siren source for " .. tostring(siren.soundscapeId) .. ": " .. tostring(source))
     return nil
   end
 
   local stopName = nil
-  local stopPath = resolveSoundPath(entry.stopPath, "unverified_siren_stop_" .. tostring(siren.soundscapeId), entry.name .. " stop")
+  local stopPath = resolveSoundPath(entry.stopPath, "unverified_" .. role .. "_stop_" .. tostring(siren.soundscapeId), entry.name .. " stop")
   if stopPath and stopPath ~= "" and stopPath:sub(1, 6) ~= "event:" then
     stopName = entry.stopName or (profileName .. "_stop")
     local stopOk, stopErr = pcall(function()
       obj:createSFXSource(stopPath, "AudioDefault3D", stopName, refNode)
     end)
     if not stopOk then
-      warnOnce("create_siren_stop_" .. tostring(siren.soundscapeId), "Unable to create ELS siren stop source for " .. tostring(siren.soundscapeId) .. ": " .. tostring(stopErr))
+      warnOnce("create_" .. role .. "_stop_" .. tostring(siren.soundscapeId), "Unable to create ELS siren stop source for " .. tostring(siren.soundscapeId) .. ": " .. tostring(stopErr))
       stopName = nil
     end
   end
 
-  sirenSources[index] = {
+  targetSources[index] = {
     id = source,
     label = entry.name,
     volume = entry.volume or siren.volume or 1.0,
@@ -634,7 +648,25 @@ local function ensureSirenSource(index)
     nodeRef = refNode
   }
 
-  return sirenSources[index]
+  return targetSources[index]
+end
+
+local function ensureSirenSource(index)
+  return createSirenSource(index, "siren", sirenSources)
+end
+
+local function ensureDualSirenSource(index)
+  return createSirenSource(index, "dual_siren", dualSirenSources)
+end
+
+local function stopSource(source)
+  if not source then
+    return
+  end
+
+  safeSfxCall("stopSFX", source.id)
+  safeSfxCall("cutSFX", source.id)
+  safePlaySfxOnce(source.stopName, source.nodeRef, source.volume, source.pitch)
 end
 
 stopSiren = function()
@@ -643,14 +675,30 @@ stopSiren = function()
   end
 
   local source = sirenSources[activeSiren]
-  if source then
-    safeSfxCall("stopSFX", source.id)
-    safeSfxCall("cutSFX", source.id)
-    safePlaySfxOnce(source.stopName, source.nodeRef, source.volume, source.pitch)
-  end
+  stopSource(source)
 
   ensureElectricsValues().elsSiren = 0
   activeSiren = 0
+end
+
+stopDualSiren = function()
+  if activeDualSiren == 0 then
+    return
+  end
+
+  local source = dualSirenSources[activeDualSiren]
+  stopSource(source)
+
+  ensureElectricsValues().elsDualSiren = 0
+  activeDualSiren = 0
+end
+
+stopAllSirens = function()
+  stopSiren()
+  stopDualSiren()
+  if stopManual then
+    stopManual()
+  end
 end
 
 playSiren = function(index)
@@ -671,6 +719,49 @@ playSiren = function(index)
     safeSfxCall("setVolume", source.id, source.volume)
   end
   safeSfxCall("playSFX", source.id)
+end
+
+local function playDualSiren(index)
+  local source = ensureDualSirenSource(index)
+  if not source then
+    if controllerInstalled and safeFirstPlayerSeated() then
+      ui_message("ELS dual siren " .. index .. " is not configured for this vehicle", 3, 0, 1)
+    end
+    return
+  end
+
+  stopDualSiren()
+  playFeedback()
+  activeDualSiren = index
+  ensureElectricsValues().elsDualSiren = index
+  safeSfxCall("cutSFX", source.id)
+  if not safeSfxCall("setVolumePitch", source.id, source.volume, source.pitch or 1.0) then
+    safeSfxCall("setVolume", source.id, source.volume)
+  end
+  safeSfxCall("playSFX", source.id)
+end
+
+local function toggleDualSiren(index)
+  if not updateControllerInstalled() then
+    return
+  end
+
+  if (ensureElectricsValues().elsLightsStage or 0) == 0 then
+    return
+  end
+
+  if activeDualSiren == index then
+    playFeedback()
+    stopDualSiren()
+    return
+  end
+
+  playDualSiren(index)
+end
+
+local function dualModifier(value, filtertype)
+  local numericValue = tonumber(value) or 0
+  dualModifierHeld = value == true or numericValue > 0.1
 end
 
 -- The manual tone is a momentary "air-horn" style override: it has its own
@@ -772,7 +863,7 @@ local function startManual()
   end
 
   -- Manual overrides any playing tone and does not require the lights to be on.
-  stopSiren()
+  stopAllSirens()
   playFeedback()
   ensureElectricsValues().elsManual = 1
   safeSfxCall("cutSFX", source.id)
@@ -808,7 +899,7 @@ local function setLightStage(stage)
   setVehicleLightbarState(stage)
 
   if stage == 0 then
-    stopSiren()
+    stopAllSirens()
   end
 end
 
@@ -839,12 +930,11 @@ local function syncFromStockLightbar()
   applyLightStageValues(stockStage)
 
   if stockStage == 0 then
-    stopSiren()
-    stopManual()
+    stopAllSirens()
   elseif stockStage == 2 and activeSiren == 0 then
     playSiren(1)
   elseif stockStage < 2 and activeSiren ~= 0 then
-    stopSiren()
+    stopAllSirens()
   end
 end
 
@@ -873,6 +963,11 @@ local function activateSiren(index, value, filtertype)
     return
   end
 
+  if dualModifierHeld then
+    toggleDualSiren(index)
+    return
+  end
+
   if activeSiren == index then
     playFeedback()
     stopSiren()
@@ -890,11 +985,20 @@ local function setSiren(index, soundscapeId)
   if activeSiren == index then
     stopSiren()
   end
+  if activeDualSiren == index then
+    stopDualSiren()
+  end
 
   local oldSource = sirenSources[index]
   if oldSource then
     safeDeleteSource(oldSource, "siren_" .. index)
     sirenSources[index] = nil
+  end
+
+  local oldDualSource = dualSirenSources[index]
+  if oldDualSource then
+    safeDeleteSource(oldDualSource, "dual_siren_" .. index)
+    dualSirenSources[index] = nil
   end
 
   config.sirens[index].soundscapeId = soundscapeId
@@ -918,6 +1022,7 @@ local function getVisualizerState()
     sirens[index] = {
       id = index,
       active = activeSiren == index,
+      dualActive = activeDualSiren == index,
       part = part or "",
       label = getSirenDisplayName(part) or siren.label or part or ("Siren " .. index)
     }
@@ -927,6 +1032,8 @@ local function getVisualizerState()
     controllerInstalled = controllerInstalled,
     stage = values.elsLightsStage or values.lightbar or 0,
     activeSiren = activeSiren,
+    activeDualSiren = activeDualSiren,
+    dualModifierHeld = dualModifierHeld,
     manualActive = (values.elsManual or 0) > 0,
     sirens = sirens
   }
@@ -957,13 +1064,13 @@ local function onExtensionLoaded()
   lastObservedLightbarState = normalizeLightbarState(values.lightbar)
   applyLightStageValues(lastObservedLightbarState)
   values.elsSiren = values.elsSiren or 0
+  values.elsDualSiren = values.elsDualSiren or 0
   values.elsManual = values.elsManual or 0
   log("I", "elsControllerVE", "ELS Controller vehicle extension loaded")
 end
 
 local function onReset()
-  stopSiren()
-  stopManual()
+  stopAllSirens()
   setVehicleLightbarState(0)
 end
 
@@ -978,6 +1085,10 @@ M.manualSiren = manualSiren
 M.startManual = startManual
 M.stopManual = stopManual
 M.stopSiren = stopSiren
+M.stopDualSiren = stopDualSiren
+M.stopAllSirens = stopAllSirens
+M.toggleDualSiren = toggleDualSiren
+M.dualModifier = dualModifier
 M.setSiren = setSiren
 M.getConfigInfo = getConfigInfo
 M.getVisualizerState = getVisualizerState
