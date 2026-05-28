@@ -73,6 +73,22 @@ local function safeSfxCall(name, sourceId, ...)
   return true
 end
 
+local function safePlaySfxOnce(name, nodeRef, volume, pitch)
+  if not name or not nodeRef or not obj or not obj.playSFXOnce then
+    return false
+  end
+
+  local ok, err = pcall(function()
+    obj:playSFXOnce(name, nodeRef, volume or 1, pitch or 1)
+  end)
+  if not ok then
+    warnOnce("sfx_once_" .. tostring(name), "Unable to play ELS one-shot sound: " .. tostring(err))
+    return false
+  end
+
+  return true
+end
+
 local function safeDeleteSource(source, key)
   if not source or not source.id or not obj or not obj.deleteSFXSource then
     return
@@ -148,6 +164,58 @@ local function getSoundscapeSource(soundscape)
   return nil
 end
 
+local function isEmptySound(path)
+  return not path or path == "" or path:lower():find("empty%.ogg", 1) ~= nil
+end
+
+local function resolveSoundPath(path, warningKey, displayName)
+  if not path or path == "" or path:sub(1, 6) == "event:" then
+    return path
+  end
+
+  if FS:fileExists(path) then
+    return path
+  end
+
+  if not path:match("%.[^/\\%.]+$") then
+    local extensions = { ".wav", ".ogg", ".mp3" }
+    for _, extension in ipairs(extensions) do
+      local candidate = path .. extension
+      if FS:fileExists(candidate) then
+        return candidate
+      end
+    end
+  end
+
+  warnOnce(warningKey, "Unable to verify sound path for " .. tostring(displayName) .. "; trying BeamNG source as-is: " .. tostring(path))
+  return path
+end
+
+local function getNoFadeSirenData(entry)
+  if type(entry) ~= "table" or type(entry.controller) ~= "table" then
+    return nil
+  end
+
+  -- General_Cool/DaddelZeit no-fade parts keep the real siren path in
+  -- controller data while the soundscape points at empty.ogg.
+  for _, row in ipairs(entry.controller) do
+    local controllerName = type(row) == "table" and row[1]
+    local controllerData = controllerName and entry[controllerName]
+    if type(controllerData) == "table" and controllerData.sirenPath and controllerData.sirenPath ~= "" then
+      return {
+        source = controllerData.sirenPath,
+        stopPath = controllerData.sirenStopPath,
+        stopName = controllerData.internalSirenStopName,
+        volume = controllerData.sirenVolume,
+        pitch = controllerData.sirenPitch,
+        noFade = true
+      }
+    end
+  end
+
+  return nil
+end
+
 local function buildSirenCatalog()
   local catalog = {}
   sirenNamesById = {}
@@ -164,8 +232,22 @@ local function buildSirenCatalog()
           sirenNamesById[id] = name
 
           local source = getSoundscapeSource(entry.soundscape)
+          local noFadeData = getNoFadeSirenData(entry)
+          if noFadeData and isEmptySound(source) then
+            source = noFadeData.source
+          end
+
           if source and source ~= "" then
-            catalog[id] = { id = id, name = name, source = source }
+            catalog[id] = {
+              id = id,
+              name = name,
+              source = source,
+              stopPath = noFadeData and noFadeData.stopPath or nil,
+              stopName = noFadeData and noFadeData.stopName or nil,
+              volume = noFadeData and noFadeData.volume or nil,
+              pitch = noFadeData and noFadeData.pitch or nil,
+              noFade = noFadeData and noFadeData.noFade or false
+            }
           end
         end
       end
@@ -363,6 +445,47 @@ local function getRefNode()
   return refNode
 end
 
+local function getFrontCenterNodeRef()
+  local nodes = v and v.data and v.data.nodes
+  local fallbackRef = getRefNode()
+
+  if not nodes then
+    return fallbackRef
+  end
+
+  local centerNodes = {}
+  local minY = math.huge
+  local maxY = -math.huge
+
+  for index, node in ipairs(nodes) do
+    local x = node.pos and (node.pos.x or node[1]) or node[1]
+    local y = node.pos and (node.pos.y or node[2]) or node[2]
+    if x and y and math.abs(x) < 0.05 then
+      table.insert(centerNodes, { ref = node.ref or node.cid or node.id or index, y = y })
+      minY = math.min(minY, y)
+      maxY = math.max(maxY, y)
+    end
+  end
+
+  if #centerNodes == 0 then
+    return fallbackRef
+  end
+
+  local targetY = minY + 0.15 * (maxY - minY)
+  local bestNode = centerNodes[1]
+  local bestDist = math.abs(bestNode.y - targetY)
+
+  for _, node in ipairs(centerNodes) do
+    local dist = math.abs(node.y - targetY)
+    if dist < bestDist then
+      bestNode = node
+      bestDist = dist
+    end
+  end
+
+  return bestNode.ref
+end
+
 local function getFeedbackConfig()
   local feedback = config.feedback or {}
   if feedback.enabled == false then
@@ -473,13 +596,9 @@ local function ensureSirenSource(index)
     return nil
   end
 
-  local path = entry.source
-  if path:sub(1, 6) ~= "event:" and not FS:fileExists(path) then
-    warnOnce("missing_siren_sound_" .. tostring(path), "Missing sound for " .. entry.name .. ": " .. path)
-    return nil
-  end
+  local path = resolveSoundPath(entry.source, "unverified_siren_sound_" .. tostring(siren.soundscapeId), entry.name)
 
-  local refNode = getRefNode()
+  local refNode = getFrontCenterNodeRef()
   if not refNode then
     return nil
   end
@@ -493,10 +612,26 @@ local function ensureSirenSource(index)
     return nil
   end
 
+  local stopName = nil
+  local stopPath = resolveSoundPath(entry.stopPath, "unverified_siren_stop_" .. tostring(siren.soundscapeId), entry.name .. " stop")
+  if stopPath and stopPath ~= "" and stopPath:sub(1, 6) ~= "event:" then
+    stopName = entry.stopName or (profileName .. "_stop")
+    local stopOk, stopErr = pcall(function()
+      obj:createSFXSource(stopPath, "AudioDefault3D", stopName, refNode)
+    end)
+    if not stopOk then
+      warnOnce("create_siren_stop_" .. tostring(siren.soundscapeId), "Unable to create ELS siren stop source for " .. tostring(siren.soundscapeId) .. ": " .. tostring(stopErr))
+      stopName = nil
+    end
+  end
+
   sirenSources[index] = {
     id = source,
     label = entry.name,
-    volume = siren.volume or 1.0
+    volume = entry.volume or siren.volume or 1.0,
+    pitch = entry.pitch or 1.0,
+    stopName = stopName,
+    nodeRef = refNode
   }
 
   return sirenSources[index]
@@ -510,6 +645,8 @@ stopSiren = function()
   local source = sirenSources[activeSiren]
   if source then
     safeSfxCall("stopSFX", source.id)
+    safeSfxCall("cutSFX", source.id)
+    safePlaySfxOnce(source.stopName, source.nodeRef, source.volume, source.pitch)
   end
 
   ensureElectricsValues().elsSiren = 0
@@ -530,7 +667,9 @@ playSiren = function(index)
   activeSiren = index
   ensureElectricsValues().elsSiren = index
   safeSfxCall("cutSFX", source.id)
-  safeSfxCall("setVolume", source.id, source.volume)
+  if not safeSfxCall("setVolumePitch", source.id, source.volume, source.pitch or 1.0) then
+    safeSfxCall("setVolume", source.id, source.volume)
+  end
   safeSfxCall("playSFX", source.id)
 end
 
@@ -578,13 +717,9 @@ local function ensureManualSource()
     return nil
   end
 
-  local path = entry.source
-  if path:sub(1, 6) ~= "event:" and not FS:fileExists(path) then
-    warnOnce("missing_manual_sound_" .. tostring(path), "Missing sound for manual: " .. path)
-    return nil
-  end
+  local path = resolveSoundPath(entry.source, "unverified_manual_sound_" .. tostring(config.manual.soundscapeId), "manual")
 
-  local refNode = getRefNode()
+  local refNode = getFrontCenterNodeRef()
   if not refNode then
     return nil
   end
@@ -598,10 +733,26 @@ local function ensureManualSource()
     return nil
   end
 
+  local stopName = nil
+  local stopPath = resolveSoundPath(entry.stopPath, "unverified_manual_stop_" .. tostring(config.manual.soundscapeId), "manual stop")
+  if stopPath and stopPath ~= "" and stopPath:sub(1, 6) ~= "event:" then
+    stopName = entry.stopName or (profileName .. "_stop")
+    local stopOk, stopErr = pcall(function()
+      obj:createSFXSource(stopPath, "AudioDefault3D", stopName, refNode)
+    end)
+    if not stopOk then
+      warnOnce("create_manual_stop_" .. tostring(config.manual.soundscapeId), "Unable to create ELS manual stop source for " .. tostring(config.manual.soundscapeId) .. ": " .. tostring(stopErr))
+      stopName = nil
+    end
+  end
+
   manualSource = {
     id = source,
     label = entry.name,
-    volume = config.manual.volume or 1.0
+    volume = entry.volume or config.manual.volume or 1.0,
+    pitch = entry.pitch or 1.0,
+    stopName = stopName,
+    nodeRef = refNode
   }
 
   return manualSource
@@ -625,13 +776,17 @@ local function startManual()
   playFeedback()
   ensureElectricsValues().elsManual = 1
   safeSfxCall("cutSFX", source.id)
-  safeSfxCall("setVolume", source.id, source.volume)
+  if not safeSfxCall("setVolumePitch", source.id, source.volume, source.pitch or 1.0) then
+    safeSfxCall("setVolume", source.id, source.volume)
+  end
   safeSfxCall("playSFX", source.id)
 end
 
 stopManual = function()
   if manualSource then
     safeSfxCall("stopSFX", manualSource.id)
+    safeSfxCall("cutSFX", manualSource.id)
+    safePlaySfxOnce(manualSource.stopName, manualSource.nodeRef, manualSource.volume, manualSource.pitch)
   end
   ensureElectricsValues().elsManual = 0
 end
