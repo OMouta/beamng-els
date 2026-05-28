@@ -57,6 +57,21 @@ local function ensureElectricsValues()
   return {}
 end
 
+local function ensureStockLightbarElectrics(values)
+  values = values or ensureElectricsValues()
+
+  local names = {
+    "lightbar_L1", "lightbar_L2", "lightbar_L3", "lightbar_L4",
+    "lightbar_R1", "lightbar_R2", "lightbar_R3", "lightbar_R4",
+    "lightbar_A1", "lightbar_A2", "lightbar_A3", "lightbar_A4",
+    "lightbar_B1", "lightbar_B2", "lightbar_B3", "lightbar_B4"
+  }
+
+  for _, name in ipairs(names) do
+    values[name] = values[name] or 0
+  end
+end
+
 local function safeFirstPlayerSeated()
   return playerInfo and playerInfo.firstPlayerSeated
 end
@@ -568,6 +583,7 @@ end
 local function applyLightStageValues(stage)
   stage = normalizeLightbarState(stage)
   local values = ensureElectricsValues()
+  ensureStockLightbarElectrics(values)
 
   values.elsLightsStage = stage
   values.lightbarSignal = stage
