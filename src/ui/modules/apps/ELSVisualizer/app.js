@@ -13,6 +13,8 @@ angular.module('beamng.apps')
       vm.visible = false
       vm.installed = false
       vm.stage = 0
+      vm.maxStage = 1
+      vm.sirenStage = 1
       vm.activeSiren = 0
       vm.activeDualSiren = 0
       vm.dualArmed = false
@@ -44,10 +46,12 @@ angular.module('beamng.apps')
             vm.installed = !!state.controllerInstalled
             vm.visible = vm.installed
             vm.stage = state.stage || 0
+            vm.maxStage = state.maxStage || 1
+            vm.sirenStage = state.sirenStage || vm.maxStage
             vm.activeSiren = state.activeSiren || 0
             vm.activeDualSiren = state.activeDualSiren || 0
             vm.manualHeld = !!state.manualActive
-            if (!vm.installed || vm.stage === 0) vm.dualArmed = false
+            if (!vm.installed || vm.stage < vm.sirenStage) vm.dualArmed = false
             if (state.sirens) vm.sirens = state.sirens
           })
         })
@@ -70,7 +74,7 @@ angular.module('beamng.apps')
       }
 
       vm.dual = function () {
-        if (!vm.installed || vm.stage === 0) return
+        if (!vm.installed || vm.stage < vm.sirenStage) return
         vm.dualArmed = !vm.dualArmed
       }
 

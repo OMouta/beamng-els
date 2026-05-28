@@ -12,17 +12,21 @@ local sirenNamesById = nil
 local activeConfigInfo = nil
 local loadedPartSirens = {}
 local controllerInstalled = false
+local lightbarModeChoices = nil
 local feedbackSources = {}
 local stopSiren
 local stopDualSiren
 local stopAllSirens
 local playSiren
 local stopManual
+local normalizeLightbarState
 local lastObservedLightbarState = nil
 local warned = {}
 
 local config = {
-  lights = { stages = { "off", "on" } },
+  lights = {
+    stages = nil
+  },
   feedback = {
     enabled = true,
     selected = "classic",
@@ -159,6 +163,7 @@ local function getConfigCandidates()
 end
 
 local function getMaxStage()
+  config.lights = config.lights or {}
   if config.lights.maxStage then
     return config.lights.maxStage
   end
@@ -168,6 +173,106 @@ local function getMaxStage()
   end
 
   return 1
+end
+
+local function getLightStageConfig(stage)
+  config.lights = config.lights or {}
+  local stages = config.lights.stages or {}
+  local stageConfig = stages[stage + 1] or stages[tostring(stage)]
+
+  if type(stageConfig) == "table" then
+    return stageConfig
+  end
+
+  return {
+    label = tostring(stageConfig or ("Stage " .. stage)),
+    modeIndex = stage
+  }
+end
+
+local function getModeIndexForStage(stage)
+  stage = normalizeLightbarState(stage)
+  local stageConfig = getLightStageConfig(stage)
+  local modeIndex = stageConfig.modeIndex or stageConfig.index or stageConfig.lightbarMode or stageConfig.lightbarStage or stageConfig.mode or stageConfig.value
+  return math.max(normalizeLightbarState(modeIndex ~= nil and modeIndex or stage), 1)
+end
+
+local function addLightbarModesFromConfig(choicesByIndex, controllerName, controllerConfig)
+  if type(controllerConfig) ~= "table" or type(controllerConfig.modes) ~= "table" then
+    return
+  end
+
+  for index, row in ipairs(controllerConfig.modes) do
+    if index > 1 and type(row) == "table" then
+      local modeName = row[1]
+      if modeName and modeName ~= "" then
+        local modeIndex = index - 1
+        local choice = choicesByIndex[modeIndex]
+        if not choice then
+          choicesByIndex[modeIndex] = {
+            index = modeIndex,
+            label = tostring(modeName),
+            controllers = { controllerName }
+          }
+        elseif not choice.label:find(tostring(modeName), 1, true) then
+          choice.label = choice.label .. " / " .. tostring(modeName)
+          table.insert(choice.controllers, controllerName)
+        end
+      end
+    end
+  end
+end
+
+local function collectLightbarModesFromNode(node, choicesByIndex, seen)
+  if type(node) ~= "table" or seen[node] then
+    return
+  end
+  seen[node] = true
+
+  local controllerRows = node.controller
+  if type(controllerRows) == "table" then
+    for _, row in ipairs(controllerRows) do
+      local controllerName = type(row) == "table" and row[1]
+      if controllerName == "lightbar" or (type(controllerName) == "string" and controllerName:find("lightbar", 1, true)) then
+        addLightbarModesFromConfig(choicesByIndex, controllerName, row[2] or node[controllerName])
+      end
+    end
+  end
+
+  for _, child in pairs(node) do
+    collectLightbarModesFromNode(child, choicesByIndex, seen)
+  end
+end
+
+local function getLightbarModeChoices()
+  if lightbarModeChoices then
+    return lightbarModeChoices
+  end
+
+  local choicesByIndex = {}
+  collectLightbarModesFromNode(v and v.data, choicesByIndex, {})
+
+  lightbarModeChoices = {}
+  for index, choice in pairs(choicesByIndex) do
+    table.insert(lightbarModeChoices, choice)
+  end
+  table.sort(lightbarModeChoices, function(a, b) return a.index < b.index end)
+
+  return lightbarModeChoices
+end
+
+local function getSirenStage()
+  config.lights = config.lights or {}
+  return normalizeLightbarState(config.lights.sirenStage or getMaxStage())
+end
+
+local function getCurrentElsStage(values)
+  values = values or ensureElectricsValues()
+  if values.elsLightsStage ~= nil then
+    return math.min(normalizeLightbarState(values.elsLightsStage), getMaxStage())
+  end
+
+  return values.lightbar and values.lightbar > 0 and getSirenStage() or 0
 end
 
 local function getSoundscapeSource(soundscape)
@@ -313,6 +418,28 @@ local function buildFeedbackCatalog()
   return catalog
 end
 
+local function buildLightStageCatalog()
+  local catalog = {}
+  local files = FS:findFiles("/vehicles/common/sounds/", "*.jbeam", -1, true, false) or {}
+
+  for _, file in ipairs(files) do
+    local data = jsonReadFile(file)
+    if data then
+      for id, entry in pairs(data) do
+        if type(entry) == "table" and entry.slotType == "els_light_stage_mode" and entry.elsLightStage then
+          catalog[id] = {
+            id = id,
+            name = entry.information and entry.information.name or id,
+            modeIndex = entry.elsLightStage.modeIndex or entry.elsLightStage.index or entry.elsLightStage.mode or entry.elsLightStage.value or 1
+          }
+        end
+      end
+    end
+  end
+
+  return catalog
+end
+
 local function loadConfig()
   for _, candidate in ipairs(getConfigCandidates()) do
     local loadedConfig = jsonReadFile(candidate.path)
@@ -426,6 +553,42 @@ local function applyPartSelectedFeedback()
   config.feedback.variations = nil
 end
 
+local function applyPartSelectedLightStages()
+  config.lights = config.lights or {}
+
+  local lightStageCatalog = buildLightStageCatalog()
+  local stages = {
+    { label = "OFF", modeIndex = 1 }
+  }
+  local hasConfiguredStage = false
+
+  for stage = 1, 3 do
+    local selectedPart = getSelectedPart("els_light_stage_" .. stage)
+    local selectedStage = selectedPart and lightStageCatalog[selectedPart]
+    if selectedStage then
+      stages[stage + 1] = {
+        label = "STAGE " .. stage,
+        modeIndex = selectedStage.modeIndex
+      }
+      hasConfiguredStage = true
+    end
+  end
+
+  if hasConfiguredStage then
+    for stage = 1, 3 do
+      stages[stage + 1] = stages[stage + 1] or {
+        label = "STAGE " .. stage,
+        modeIndex = stage
+      }
+    end
+    config.lights.stages = stages
+    config.lights.sirenStage = 3
+  else
+    config.lights.stages = nil
+    config.lights.sirenStage = nil
+  end
+end
+
 local function applyPartSelectedSirens()
   if not updateControllerInstalled() then
     return
@@ -433,6 +596,7 @@ local function applyPartSelectedSirens()
 
   config.sirens = config.sirens or {}
   applyPartSelectedFeedback()
+  applyPartSelectedLightStages()
 
   for index = 1, 4 do
     local selectedPart = getSelectedSirenPart(index)
@@ -571,7 +735,7 @@ local function playFeedback()
   safeSfxCall("playSFX", source.id)
 end
 
-local function normalizeLightbarState(stage)
+normalizeLightbarState = function(stage)
   stage = math.floor(tonumber(stage) or 0)
   if stage < 0 then
     return 0
@@ -586,20 +750,78 @@ local function applyLightStageValues(stage)
   ensureStockLightbarElectrics(values)
 
   values.elsLightsStage = stage
-  values.lightbarSignal = stage
-  values.emergencyLights = stage
+  values.elsLightbarModeIndex = stage > 0 and getModeIndexForStage(stage) or 0
+  values.lightbarSignal = stage > 0 and 1 or 0
+  values.emergencyLights = stage > 0 and 1 or 0
+end
+
+local function setLightbarSignal(enabled)
+  local signal = enabled and 1 or 0
+  if electrics and electrics.set_lightbar_signal then
+    electrics.set_lightbar_signal(signal)
+  end
+
+  ensureElectricsValues().lightbar = signal
+end
+
+local function getLightbarController()
+  if not controller then
+    return nil
+  end
+
+  if controller.getControllersByType then
+    local ok, lightbars = pcall(function()
+      return controller.getControllersByType("lightbar")
+    end)
+    if ok and type(lightbars) == "table" and next(lightbars) then
+      return lightbars
+    end
+  end
+
+  if controller.getController then
+    local names = { "lightbar", "lightbar_rear", "lightbar_front" }
+    for _, name in ipairs(names) do
+      local ok, lightbar = pcall(function()
+        return controller.getController(name)
+      end)
+      if ok and lightbar and lightbar.setModeIndex then
+        return { lightbar }
+      end
+    end
+  end
+
+  return nil
+end
+
+local function setLightbarModeIndex(modeIndex)
+  local lightbars = getLightbarController()
+  if not lightbars then
+    warnOnce("missing_lightbar_controller", "Unable to set ELS lightbar mode because no compatible lightbar controller was found")
+    return
+  end
+
+  for _, lightbar in pairs(lightbars) do
+    if lightbar and lightbar.setModeIndex then
+      local ok, err = pcall(function()
+        lightbar.setModeIndex(modeIndex)
+      end)
+      if not ok then
+        warnOnce("set_lightbar_mode_" .. tostring(modeIndex), "Unable to set ELS lightbar mode index " .. tostring(modeIndex) .. ": " .. tostring(err))
+      end
+    end
+  end
 end
 
 local function setVehicleLightbarState(stage)
-  stage = normalizeLightbarState(stage)
+  stage = math.min(normalizeLightbarState(stage), getMaxStage())
 
-  if electrics and electrics.set_lightbar_signal then
-    electrics.set_lightbar_signal(stage)
+  setLightbarSignal(stage > 0)
+  if stage > 0 and getMaxStage() > 1 then
+    setLightbarModeIndex(getModeIndexForStage(stage))
   end
 
-  ensureElectricsValues().lightbar = stage
   applyLightStageValues(stage)
-  lastObservedLightbarState = stage
+  lastObservedLightbarState = stage > 0 and 1 or 0
 end
 
 local function createSirenSource(index, role, targetSources)
@@ -762,7 +984,7 @@ local function toggleDualSiren(index)
     return
   end
 
-  if (ensureElectricsValues().elsLightsStage or 0) == 0 then
+  if getCurrentElsStage() < getSirenStage() then
     return
   end
 
@@ -912,20 +1134,28 @@ local function setLightStage(stage)
     return
   end
 
-  setVehicleLightbarState(stage)
+  applyPartSelectedLightStages()
+  local currentStage = getCurrentElsStage()
+  stage = math.min(normalizeLightbarState(stage), getMaxStage())
 
-  if stage == 0 then
+  if stage ~= currentStage then
     stopAllSirens()
   end
+
+  setVehicleLightbarState(stage)
 end
 
-local function toggleVehicleLightbar()
+local function getNextLightStage(direction)
+  applyPartSelectedLightStages()
   local values = ensureElectricsValues()
-  local currentStage = values.elsLightsStage or values.lightbar or values.lightbarSignal or 0
-  local nextStage = normalizeLightbarState(currentStage) > 0 and 0 or 1
+  local currentStage = getCurrentElsStage(values)
+  local maxStage = getMaxStage()
 
-  setLightStage(nextStage)
-  playFeedback()
+  if direction < 0 then
+    return currentStage <= 0 and maxStage or currentStage - 1
+  end
+
+  return currentStage >= maxStage and 0 or currentStage + 1
 end
 
 local function syncFromStockLightbar()
@@ -933,23 +1163,22 @@ local function syncFromStockLightbar()
     return
   end
 
-  local stockStage = normalizeLightbarState(ensureElectricsValues().lightbar)
+  local stockSignal = normalizeLightbarState(ensureElectricsValues().lightbar)
   if lastObservedLightbarState == nil then
-    lastObservedLightbarState = stockStage
+    lastObservedLightbarState = stockSignal
   end
 
-  if stockStage == lastObservedLightbarState then
+  if stockSignal == lastObservedLightbarState then
     return
   end
 
-  lastObservedLightbarState = stockStage
+  lastObservedLightbarState = stockSignal
+  local stockStage = stockSignal > 0 and getSirenStage() or 0
   applyLightStageValues(stockStage)
 
   if stockStage == 0 then
     stopAllSirens()
-  elseif stockStage == 2 and activeSiren == 0 then
-    playSiren(1)
-  elseif stockStage < 2 and activeSiren ~= 0 then
+  elseif stockStage < getSirenStage() and (activeSiren ~= 0 or activeDualSiren ~= 0) then
     stopAllSirens()
   end
 end
@@ -959,7 +1188,8 @@ local function stageUp(value, filtertype)
     return
   end
 
-  toggleVehicleLightbar()
+  setLightStage(getNextLightStage(1))
+  playFeedback()
 end
 
 local function stageDown(value, filtertype)
@@ -967,7 +1197,8 @@ local function stageDown(value, filtertype)
     return
   end
 
-  toggleVehicleLightbar()
+  setLightStage(getNextLightStage(-1))
+  playFeedback()
 end
 
 local function activateSiren(index, value, filtertype)
@@ -975,7 +1206,7 @@ local function activateSiren(index, value, filtertype)
     return
   end
 
-  if (ensureElectricsValues().elsLightsStage or 0) == 0 then
+  if getCurrentElsStage() < getSirenStage() then
     return
   end
 
@@ -1020,14 +1251,40 @@ local function setSiren(index, soundscapeId)
   config.sirens[index].soundscapeId = soundscapeId
 end
 
+local function setStageLightbarMode(stage, modeIndex)
+  stage = normalizeLightbarState(stage)
+  modeIndex = math.max(normalizeLightbarState(modeIndex), 1)
+  if stage < 1 or stage > 3 then
+    return
+  end
+
+  config.lights = config.lights or {}
+  config.lights.stages = config.lights.stages or {
+    { label = "OFF", modeIndex = 1 },
+    { label = "STAGE 1", modeIndex = 1 },
+    { label = "STAGE 2", modeIndex = 2 },
+    { label = "STAGE 3", modeIndex = 3 }
+  }
+  config.lights.stages[stage + 1] = {
+    label = "STAGE " .. stage,
+    modeIndex = modeIndex
+  }
+  config.lights.sirenStage = 3
+
+  if getCurrentElsStage() == stage then
+    setLightbarModeIndex(modeIndex)
+    applyLightStageValues(stage)
+  end
+end
+
 local function getConfigInfo()
   return activeConfigInfo
 end
 
 local function getVisualizerState()
-  syncFromStockLightbar()
   updateControllerInstalled()
   applyPartSelectedSirens()
+  syncFromStockLightbar()
   local values = ensureElectricsValues()
 
   local sirens = {}
@@ -1044,9 +1301,23 @@ local function getVisualizerState()
     }
   end
 
+  local lightStages = {}
+  for stage = 1, getMaxStage() do
+    lightStages[stage] = {
+      stage = stage,
+      modeIndex = getModeIndexForStage(stage),
+      label = getLightStageConfig(stage).label or ("STAGE " .. stage)
+    }
+  end
+
   return {
     controllerInstalled = controllerInstalled,
-    stage = values.elsLightsStage or values.lightbar or 0,
+    stage = getCurrentElsStage(values),
+    maxStage = getMaxStage(),
+    sirenStage = getSirenStage(),
+    lightbarModeIndex = values.elsLightbarModeIndex or 0,
+    lightbarModes = getLightbarModeChoices(),
+    lightStages = lightStages,
     activeSiren = activeSiren,
     activeDualSiren = activeDualSiren,
     dualModifierHeld = dualModifierHeld,
@@ -1075,10 +1346,11 @@ local function onExtensionLoaded()
   ensureManualConfig()
   updateControllerInstalled()
   applyPartSelectedSirens()
+  lightbarModeChoices = nil
   sirenCatalogById = buildSirenCatalog()
   local values = ensureElectricsValues()
   lastObservedLightbarState = normalizeLightbarState(values.lightbar)
-  applyLightStageValues(lastObservedLightbarState)
+  applyLightStageValues(lastObservedLightbarState > 0 and getSirenStage() or 0)
   values.elsSiren = values.elsSiren or 0
   values.elsDualSiren = values.elsDualSiren or 0
   values.elsManual = values.elsManual or 0
@@ -1106,6 +1378,7 @@ M.stopAllSirens = stopAllSirens
 M.toggleDualSiren = toggleDualSiren
 M.dualModifier = dualModifier
 M.setSiren = setSiren
+M.setStageLightbarMode = setStageLightbarMode
 M.getConfigInfo = getConfigInfo
 M.getVisualizerState = getVisualizerState
 M.debugSirenParts = debugSirenParts

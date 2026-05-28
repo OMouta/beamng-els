@@ -9,6 +9,9 @@
     "slots2": [
       ["name", "allowTypes", "denyTypes", "default", "description"],
       ["els_feedback_beep", ["els_feedback_beep"], [], "els_feedback_beep_classic", "ELS Feedback Beep"],
+      ["els_light_stage_1", ["els_light_stage_mode"], [], "none", "ELS Stage 1 Lightbar Mode"],
+      ["els_light_stage_2", ["els_light_stage_mode"], [], "none", "ELS Stage 2 Lightbar Mode"],
+      ["els_light_stage_3", ["els_light_stage_mode"], [], "none", "ELS Stage 3 Lightbar Mode"],
       ["els_siren_1", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_3", "ELS Siren 1"],
       ["els_siren_2", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_4", "ELS Siren 2"],
       ["els_siren_3", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_8", "ELS Siren 3"],
@@ -19,6 +22,94 @@
       ["name", "src"],
       ["siren", ""]
     ]
+  },
+  "els_light_stage_mode_1": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Lightbar Mode Index 1",
+      "value": 0
+    },
+    "slotType": "els_light_stage_mode",
+    "elsLightStage": {
+      "modeIndex": 1
+    }
+  },
+  "els_light_stage_mode_2": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Lightbar Mode Index 2",
+      "value": 0
+    },
+    "slotType": "els_light_stage_mode",
+    "elsLightStage": {
+      "modeIndex": 2
+    }
+  },
+  "els_light_stage_mode_3": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Lightbar Mode Index 3",
+      "value": 0
+    },
+    "slotType": "els_light_stage_mode",
+    "elsLightStage": {
+      "modeIndex": 3
+    }
+  },
+  "els_light_stage_mode_4": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Lightbar Mode Index 4",
+      "value": 0
+    },
+    "slotType": "els_light_stage_mode",
+    "elsLightStage": {
+      "modeIndex": 4
+    }
+  },
+  "els_light_stage_mode_5": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Lightbar Mode Index 5",
+      "value": 0
+    },
+    "slotType": "els_light_stage_mode",
+    "elsLightStage": {
+      "modeIndex": 5
+    }
+  },
+  "els_light_stage_mode_6": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Lightbar Mode Index 6",
+      "value": 0
+    },
+    "slotType": "els_light_stage_mode",
+    "elsLightStage": {
+      "modeIndex": 6
+    }
+  },
+  "els_light_stage_mode_7": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Lightbar Mode Index 7",
+      "value": 0
+    },
+    "slotType": "els_light_stage_mode",
+    "elsLightStage": {
+      "modeIndex": 7
+    }
+  },
+  "els_light_stage_mode_8": {
+    "information": {
+      "authors": "OMouta",
+      "name": "Lightbar Mode Index 8",
+      "value": 0
+    },
+    "slotType": "els_light_stage_mode",
+    "elsLightStage": {
+      "modeIndex": 8
+    }
   },
   "els_feedback_beep_classic": {
     "information": {

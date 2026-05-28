@@ -6,17 +6,17 @@ ELS Controller gives your emergency vehicles a more natural way to run lights an
 
 ## What It Adds
 
-- A clean emergency light on/off control
+- Emergency light control with optional configurable stages
 - Four quick-select siren buttons
 - A momentary manual siren
 - A standby button to cut the active siren
 - Feedback beeps when changing controls
 - A compact dashboard-style UI app
-- Per-vehicle siren choices saved with your configs
+- Per-vehicle siren and optional light stage choices saved with your configs
 
 ## In-Game Controller
 
-The included UI app gives you a small ELS-style control panel on screen. It shows whether the controller is installed, whether the lights are active, which siren is selected, and when the manual tone is being held.
+The included UI app gives you a small ELS-style control panel on screen. It shows whether the controller is installed, which light stage is active, which siren is selected, and when the manual tone is being held.
 
 You can use it with your mouse or bind everything to keys and use it as a visual reference while driving.
 
@@ -26,7 +26,7 @@ Add `ELS Controller` to the vehicle's `Siren Audio` slot, then choose the sirens
 
 After that, bind the ELS controls from the controls menu and add the `ELS Controller` UI app if you want the on-screen panel.
 
-Each vehicle config can keep its own siren setup, so your cruiser, ambulance, and tow truck do not all need to sound the same.
+Each vehicle config can keep its own siren setup. If you choose ELS stage modes in the parts selector, those are saved with that vehicle config too; otherwise the lights behave as a simple on/off toggle.
 
 ## License
 

@@ -164,7 +164,17 @@
     width: 2px; margin-left: -1px; border-radius: 1px;
     background: #0c0d0f; box-shadow: 1px 0 0 rgba(255,255,255,0.12);
   }
-  .els .lswitch.on .lever {
+  .els .lswitch.stage-1 .lever {
+    left: calc(33.333% - 17px);
+    background: linear-gradient(180deg, var(--green-hot) 0%, var(--green) 55%, var(--green-deep) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 0 12px rgba(84,255,134,0.7);
+  }
+  .els .lswitch.stage-2 .lever {
+    left: calc(66.666% - 17px);
+    background: linear-gradient(180deg, var(--green-hot) 0%, var(--green) 55%, var(--green-deep) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 0 12px rgba(84,255,134,0.7);
+  }
+  .els .lswitch.stage-3 .lever {
     left: calc(100% - 37px);
     background: linear-gradient(180deg, var(--green-hot) 0%, var(--green) 55%, var(--green-deep) 100%);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 0 12px rgba(84,255,134,0.7);
@@ -295,14 +305,14 @@
     <!-- lights slide switch (OFF · 1 · 2 · 3) -->
     <div class="lights">
       <span class="name">Lights</span>
-      <div class="lswitch" ng-class="{ on: els.stage > 0 }"
+      <div class="lswitch" ng-class="{ 'stage-1': els.stage === 1 && els.maxStage > 1, 'stage-2': els.stage === 2, 'stage-3': els.stage >= 3 || (els.stage === 1 && els.maxStage === 1) }"
            ng-click="els.installed && els.toggleLights()">
         <div class="lever"></div>
         <div class="marks">
           <span ng-class="{ act: els.stage === 0 }">OFF</span>
-          <span>1</span>
-          <span>2</span>
-          <span ng-class="{ act: els.stage > 0 }">3</span>
+          <span ng-class="{ act: els.stage === 1 }">{{ els.maxStage > 1 ? '1' : 'ON' }}</span>
+          <span ng-if="els.maxStage > 1" ng-class="{ act: els.stage === 2 }">2</span>
+          <span ng-if="els.maxStage > 2" ng-class="{ act: els.stage >= 3 }">3</span>
         </div>
       </div>
     </div>
@@ -322,7 +332,7 @@
       <button class="key"
               ng-repeat="siren in els.sirens track by siren.id"
               ng-class="{ on: siren.active, 'dual-on': siren.dualActive }"
-              ng-disabled="!els.installed || els.stage === 0"
+              ng-disabled="!els.installed || els.stage < els.sirenStage"
               ng-click="els.siren(siren.id)"
               title="{{ siren.label }}">SIREN {{ siren.id }}</button>
 
@@ -335,7 +345,7 @@
       <!-- dual selector -->
       <button class="key"
               ng-class="{ on: els.activeDualSiren > 0 && !els.dualArmed, 'dual-wait': els.dualArmed }"
-              ng-disabled="!els.installed || els.stage === 0"
+              ng-disabled="!els.installed || els.stage < els.sirenStage"
               ng-click="els.dual()">DUAL</button>
 
       <!-- reserved for future features -->
