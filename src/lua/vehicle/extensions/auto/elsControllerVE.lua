@@ -12,6 +12,7 @@ local sirenNamesById = nil
 local activeConfigInfo = nil
 local loadedPartSirens = {}
 local controllerInstalled = false
+local controllerWasInstalled = false
 local lightbarModeChoices = nil
 local feedbackSources = {}
 local stopSiren
@@ -68,7 +69,11 @@ local function ensureStockLightbarElectrics(values)
     "lightbar_L1", "lightbar_L2", "lightbar_L3", "lightbar_L4",
     "lightbar_R1", "lightbar_R2", "lightbar_R3", "lightbar_R4",
     "lightbar_A1", "lightbar_A2", "lightbar_A3", "lightbar_A4",
-    "lightbar_B1", "lightbar_B2", "lightbar_B3", "lightbar_B4"
+    "lightbar_B1", "lightbar_B2", "lightbar_B3", "lightbar_B4",
+    "wigwag_L", "wigwag_R",
+    "highbeam_wigwag_L", "highbeam_wigwag_R",
+    "reverse_wigwag_L", "reverse_wigwag_R",
+    "lowhighbeam_wigwag_L", "lowhighbeam_wigwag_R"
   }
 
   for _, name in ipairs(names) do
@@ -506,8 +511,11 @@ local function updateControllerInstalled()
     end
   end
 
-  if not controllerInstalled then
+  if controllerInstalled then
+    controllerWasInstalled = true
+  elseif controllerWasInstalled then
     stopAllSirens()
+    controllerWasInstalled = false
   end
 
   return controllerInstalled
@@ -1357,9 +1365,13 @@ local function debugSirenParts()
 end
 
 local function onExtensionLoaded()
+  if not updateControllerInstalled() then
+    log("I", "elsControllerVE", "ELS Controller vehicle extension inactive; controller part is not installed")
+    return
+  end
+
   loadConfig()
   ensureManualConfig()
-  updateControllerInstalled()
   applyPartSelectedSirens()
   lightbarModeChoices = nil
   sirenCatalogById = buildSirenCatalog()
@@ -1373,6 +1385,10 @@ local function onExtensionLoaded()
 end
 
 local function onReset()
+  if not controllerInstalled and not controllerWasInstalled then
+    return
+  end
+
   stopAllSirens()
   setVehicleLightbarState(0)
 end
