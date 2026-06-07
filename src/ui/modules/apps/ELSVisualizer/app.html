@@ -212,7 +212,6 @@
     text-shadow: 0 1px 1px rgba(0,0,0,0.7);
     cursor: pointer;
     overflow: hidden;
-    animation: boot .55s ease-out both;
   }
   .els .key::before {
     content: ""; position: absolute; left: 2px; right: 2px; top: 2px; height: 40%;
@@ -239,6 +238,16 @@
     border-bottom-color: var(--blue);
     color: var(--green-hot);
   }
+  .els .key.blocked {
+    animation: blockedPulse .65s ease-in-out both;
+  }
+  .els .key.on.blocked {
+    animation: blockedPulseOn .65s ease-in-out both;
+  }
+  .els .key.dual-on.blocked,
+  .els .key.dual-wait.blocked {
+    animation: blockedPulseDual .65s ease-in-out both;
+  }
 
   /* gated (lights off) and not-installed keys */
   .els .key:disabled {
@@ -261,17 +270,55 @@
     animation: none;
   }
 
-  /* power-on self-test sweep */
-  @keyframes boot {
-    0%, 42% { border-color: var(--green); box-shadow: 0 0 9px rgba(84,255,134,0.7), inset 0 0 6px rgba(84,255,134,0.25); }
-    100%    { }
+  /* blocked-action warning pulse */
+  @keyframes blockedPulse {
+    0% { }
+    12%, 32%, 52% {
+      border-color: var(--red);
+      color: #ffd7d7;
+      box-shadow: 0 0 9px rgba(216,32,45,0.75), inset 0 0 5px rgba(216,32,45,0.28);
+    }
+    22%, 42%, 62%, 100% {
+      border-color: var(--frame);
+      color: var(--txt);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.10),
+        inset 0 -3px 5px rgba(0,0,0,0.45),
+        0 1px 2px rgba(0,0,0,0.6);
+    }
   }
-  .els .bank .key:nth-child(1)  { animation-delay: 0s; }
-  .els .bank .key:nth-child(2)  { animation-delay: .05s; }
-  .els .bank .key:nth-child(3)  { animation-delay: .10s; }
-  .els .bank .key:nth-child(4)  { animation-delay: .15s; }
-  .els .bank .key:nth-child(5)  { animation-delay: .20s; }
-
+  @keyframes blockedPulseOn {
+    0% { }
+    12%, 32%, 52% {
+      border-color: var(--red);
+      color: #ffd7d7;
+      box-shadow: 0 0 9px rgba(216,32,45,0.75), inset 0 0 5px rgba(216,32,45,0.28);
+    }
+    22%, 42%, 62%, 100% {
+      border-color: var(--green);
+      color: var(--green-hot);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.10),
+        inset 0 -3px 5px rgba(0,0,0,0.45),
+        0 1px 2px rgba(0,0,0,0.6);
+    }
+  }
+  @keyframes blockedPulseDual {
+    0% { }
+    12%, 32%, 52% {
+      border-color: var(--red);
+      color: #ffd7d7;
+      box-shadow: 0 0 9px rgba(216,32,45,0.75), inset 0 0 5px rgba(216,32,45,0.28);
+    }
+    22%, 42%, 62%, 100% {
+      border-color: var(--blue);
+      color: var(--blue-hot);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.10),
+        inset 0 -3px 5px rgba(0,0,0,0.45),
+        0 1px 2px rgba(0,0,0,0.6);
+    }
+  }
   .bottom-gap {
     height: 10px;
     width: 100%;
@@ -296,7 +343,7 @@
     <div class="bar">
       <div class="leds">
         <span class="led pwr" title="power"></span>
-        <span class="led act" ng-class="{ lit: els.activeSiren > 0 || els.activeDualSiren > 0 || els.manualHeld }" title="active"></span>
+        <span class="led act" ng-class="{ lit: els.activeSiren > 0 || els.activeDualSiren > 0 || els.manualHeld || els.hornHeld }" title="active"></span>
       </div>
       <span class="micro">{{ els.installed ? 'PWR' : 'NO HEAD' }}</span>
       <div class="logo"><b>ELS</b><span>CONTROL</span><sup>SM</sup></div>
@@ -321,7 +368,7 @@
     <div class="bank">
       <!-- manual: hold to sound, works with lights off -->
       <button class="key"
-              ng-class="{ on: els.manualHeld }"
+              ng-class="{ on: els.manualHeld, blocked: els.blocked('manual') }"
               ng-disabled="!els.installed"
               ng-mousedown="els.manualStart()"
               ng-mouseup="els.manualStop()"
@@ -331,22 +378,31 @@
       <!-- wired tones -->
       <button class="key"
               ng-repeat="siren in els.sirens track by siren.id"
-              ng-class="{ on: siren.active, 'dual-on': siren.dualActive }"
-              ng-disabled="!els.installed || els.stage < els.sirenStage"
+              ng-class="{ on: siren.active, 'dual-on': siren.dualActive, blocked: els.blocked('siren_' + siren.id) }"
+              ng-disabled="!els.installed"
               ng-click="els.siren(siren.id)"
               title="{{ siren.label }}">SIREN {{ siren.id }}</button>
 
       <!-- wired standby -->
       <button class="key"
-              ng-class="{ on: els.installed && els.activeSiren === 0 && els.activeDualSiren === 0 && !els.manualHeld }"
+              ng-class="{ on: els.installed && els.activeSiren === 0 && els.activeDualSiren === 0 && !els.manualHeld && !els.hornHeld }"
               ng-disabled="!els.installed"
               ng-click="els.standby()">STBY</button>
 
       <!-- dual selector -->
       <button class="key"
-              ng-class="{ on: els.activeDualSiren > 0 && !els.dualArmed, 'dual-wait': els.dualArmed }"
-              ng-disabled="!els.installed || els.stage < els.sirenStage"
+              ng-class="{ on: els.activeDualSiren > 0 && !els.dualArmed, 'dual-wait': els.dualArmed, blocked: els.blocked('dual') }"
+              ng-disabled="!els.installed"
               ng-click="els.dual()">DUAL</button>
+
+      <!-- horn: hold to sound, interrupts and restores active sirens -->
+      <button class="key"
+              ng-class="{ on: els.hornHeld, blocked: els.blocked('horn') }"
+              ng-disabled="!els.installed"
+              ng-mousedown="els.hornStart()"
+              ng-mouseup="els.hornStop()"
+              ng-mouseleave="els.hornStop()"
+              title="ELS horn — hold to sound">HORN</button>
 
       <!-- reserved for future features -->
       <button class="key soon" ng-repeat="f in els.future" disabled>{{ f.tag }}</button>

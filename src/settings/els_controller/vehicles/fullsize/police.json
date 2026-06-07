@@ -12,6 +12,10 @@
         "sound": "art/sound/els_controller/beep_high.wav",
         "volume": 0.55
       }
+    },
+    "error": {
+      "sound": "art/sound/els_controller/beep_error.wav",
+      "volume": 0.85
     }
   },
   "sirens": [

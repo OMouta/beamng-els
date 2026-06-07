@@ -3,12 +3,18 @@ local M = {}
 local activeSiren = 0
 local activeDualSiren = 0
 local dualModifierHeld = false
+local blockedActionNonce = 0
+local blockedActionTarget = nil
 local sirenSources = {}
 local dualSirenSources = {}
 local manualSource = nil
+local hornSource = nil
 local manualLoadedPart = nil
+local hornLoadedPart = nil
 local sirenCatalogById = nil
 local sirenNamesById = nil
+local hornCatalogById = nil
+local hornNamesById = nil
 local activeConfigInfo = nil
 local loadedPartSirens = {}
 local controllerInstalled = false
@@ -20,7 +26,10 @@ local stopDualSiren
 local stopAllSirens
 local playSiren
 local stopManual
+local stopHorn
 local normalizeLightbarState
+local manualInterruptedSirens = nil
+local hornInterruptedSirens = nil
 local lastObservedLightbarState = nil
 local warned = {}
 
@@ -34,7 +43,8 @@ local config = {
     variations = {
       classic = { sound = "art/sound/els_controller/beep_classic.wav", volume = 0.55 },
       high = { sound = "art/sound/els_controller/beep_high.wav", volume = 0.55 }
-    }
+    },
+    error = { sound = "art/sound/els_controller/beep_error.wav", volume = 0.85 }
   },
   sirens = {
     [1] = { label = "80s/90s Police Wail 1", soundscapeId = "soundscape_siren_3", volume = 1.0 },
@@ -65,15 +75,20 @@ end
 local function ensureStockLightbarElectrics(values)
   values = values or ensureElectricsValues()
 
+  local lightbarPrefixes = { "lightbar_L", "lightbar_R", "lightbar_A", "lightbar_B", "lightbar_C" }
+  for _, prefix in ipairs(lightbarPrefixes) do
+    for index = 1, 16 do
+      values[prefix .. index] = values[prefix .. index] or 0
+    end
+  end
+
   local names = {
-    "lightbar_L1", "lightbar_L2", "lightbar_L3", "lightbar_L4",
-    "lightbar_R1", "lightbar_R2", "lightbar_R3", "lightbar_R4",
-    "lightbar_A1", "lightbar_A2", "lightbar_A3", "lightbar_A4",
-    "lightbar_B1", "lightbar_B2", "lightbar_B3", "lightbar_B4",
     "wigwag_L", "wigwag_R",
     "highbeam_wigwag_L", "highbeam_wigwag_R",
     "reverse_wigwag_L", "reverse_wigwag_R",
-    "lowhighbeam_wigwag_L", "lowhighbeam_wigwag_R"
+    "lowhighbeam_wigwag_L", "lowhighbeam_wigwag_R",
+    "beacon_l", "beacon_r",
+    "beacon_L", "beacon_R"
   }
 
   for _, name in ipairs(names) do
@@ -280,13 +295,13 @@ local function getCurrentElsStage(values)
   return values.lightbar and values.lightbar > 0 and getSirenStage() or 0
 end
 
-local function getSoundscapeSource(soundscape)
+local function getSoundscapeSource(soundscape, kind)
   if type(soundscape) ~= "table" then
     return nil
   end
 
   for _, row in ipairs(soundscape) do
-    if type(row) == "table" and row[1] == "siren" then
+    if type(row) == "table" and row[1] == kind then
       return row[2]
     end
   end
@@ -319,6 +334,29 @@ local function resolveSoundPath(path, warningKey, displayName)
 
   warnOnce(warningKey, "Unable to verify sound path for " .. tostring(displayName) .. "; trying BeamNG source as-is: " .. tostring(path))
   return path
+end
+
+local function getNoFadeHornData(entry)
+  if type(entry) ~= "table" or type(entry.controller) ~= "table" then
+    return nil
+  end
+
+  for _, row in ipairs(entry.controller) do
+    local controllerName = type(row) == "table" and row[1]
+    local controllerData = controllerName and entry[controllerName]
+    if type(controllerData) == "table" and controllerData.hornPath and controllerData.hornPath ~= "" then
+      return {
+        source = controllerData.hornPath,
+        stopPath = controllerData.hornStopPath,
+        stopName = controllerData.internalHornStopName,
+        volume = controllerData.hornVolume,
+        pitch = controllerData.hornPitch,
+        noFade = true
+      }
+    end
+  end
+
+  return nil
 end
 
 local function getNoFadeSirenData(entry)
@@ -361,8 +399,47 @@ local function buildSirenCatalog()
           local name = (entry.information and entry.information.name) or id
           sirenNamesById[id] = name
 
-          local source = getSoundscapeSource(entry.soundscape)
+          local source = getSoundscapeSource(entry.soundscape, "siren")
           local noFadeData = getNoFadeSirenData(entry)
+          if noFadeData and isEmptySound(source) then
+            source = noFadeData.source
+          end
+
+          if source and source ~= "" then
+            catalog[id] = {
+              id = id,
+              name = name,
+              source = source,
+              stopPath = noFadeData and noFadeData.stopPath or nil,
+              stopName = noFadeData and noFadeData.stopName or nil,
+              volume = noFadeData and noFadeData.volume or nil,
+              pitch = noFadeData and noFadeData.pitch or nil,
+              noFade = noFadeData and noFadeData.noFade or false
+            }
+          end
+        end
+      end
+    end
+  end
+
+  return catalog
+end
+
+local function buildHornCatalog()
+  local catalog = {}
+  hornNamesById = {}
+  local files = FS:findFiles("/vehicles/common/sounds/", "*.jbeam", -1, true, false) or {}
+
+  for _, file in ipairs(files) do
+    local data = jsonReadFile(file)
+    if data then
+      for id, entry in pairs(data) do
+        if type(entry) == "table" and entry.slotType == "soundscape_horn" then
+          local name = (entry.information and entry.information.name) or id
+          hornNamesById[id] = name
+
+          local source = getSoundscapeSource(entry.soundscape, "horn")
+          local noFadeData = getNoFadeHornData(entry)
           if noFadeData and isEmptySound(source) then
             source = noFadeData.source
           end
@@ -536,6 +613,10 @@ end
 
 local function getSelectedSirenPart(index)
   return getSelectedPart("els_siren_" .. index)
+end
+
+local function getSelectedHornPart()
+  return getSelectedPart("els_horn")
 end
 
 local function applyPartSelectedFeedback()
@@ -743,6 +824,66 @@ local function playFeedback()
   safeSfxCall("playSFX", source.id)
 end
 
+local function getErrorFeedbackConfig()
+  local feedback = config.feedback or {}
+  if feedback.enabled == false then
+    return nil
+  end
+
+  return feedback.error or { sound = "art/sound/els_controller/beep_error.wav", volume = 0.85 }
+end
+
+local function playErrorFeedback()
+  if not controllerInstalled then
+    return
+  end
+
+  local feedback = getErrorFeedbackConfig()
+  if not feedback or not feedback.sound or feedback.sound == "" then
+    return
+  end
+
+  if feedback.sound:sub(1, 6) ~= "event:" and not FS:fileExists(feedback.sound) then
+    warnOnce("missing_error_feedback_sound_" .. feedback.sound, "Missing ELS error feedback sound: " .. feedback.sound)
+    return
+  end
+
+  if not feedbackSources.error or feedbackSources.error.sound ~= feedback.sound then
+    if feedbackSources.error then
+      safeDeleteSource(feedbackSources.error, "feedback_error")
+    end
+
+    local refNode = getRefNode()
+    if not refNode then
+      return
+    end
+
+    local ok, sourceId = pcall(function()
+      return obj:createSFXSource2(feedback.sound, "AudioDefault3D", "els_feedback_error_" .. obj:getID(), refNode, 0)
+    end)
+    if not ok or not sourceId then
+      warnOnce("create_error_feedback_" .. feedback.sound, "Unable to create ELS error feedback sound source: " .. tostring(sourceId))
+      return
+    end
+
+    feedbackSources.error = {
+      sound = feedback.sound,
+      id = sourceId
+    }
+  end
+
+  local source = feedbackSources.error
+  safeSfxCall("cutSFX", source.id)
+  safeSfxCall("setVolume", source.id, feedback.volume or 0.55)
+  safeSfxCall("playSFX", source.id)
+end
+
+local function blockAction(target)
+  blockedActionNonce = blockedActionNonce + 1
+  blockedActionTarget = target
+  playErrorFeedback()
+end
+
 normalizeLightbarState = function(stage)
   stage = math.floor(tonumber(stage) or 0)
   if stage < 0 then
@@ -943,13 +1084,17 @@ stopAllSirens = function()
   stopSiren()
   stopDualSiren()
   if stopManual then
-    stopManual()
+    stopManual(nil, nil, false)
+  end
+  if stopHorn then
+    stopHorn(nil, nil, false)
   end
 end
 
-playSiren = function(index)
+playSiren = function(index, suppressFeedback)
   local source = ensureSirenSource(index)
   if not source then
+    blockAction("siren_" .. tostring(index))
     if controllerInstalled and safeFirstPlayerSeated() then
       ui_message("ELS siren " .. index .. " is not configured for this vehicle", 3, 0, 1)
     end
@@ -957,7 +1102,9 @@ playSiren = function(index)
   end
 
   stopSiren()
-  playFeedback()
+  if not suppressFeedback then
+    playFeedback()
+  end
   activeSiren = index
   ensureElectricsValues().elsSiren = index
   safeSfxCall("cutSFX", source.id)
@@ -967,9 +1114,10 @@ playSiren = function(index)
   safeSfxCall("playSFX", source.id)
 end
 
-local function playDualSiren(index)
+local function playDualSiren(index, suppressFeedback)
   local source = ensureDualSirenSource(index)
   if not source then
+    blockAction("siren_" .. tostring(index))
     if controllerInstalled and safeFirstPlayerSeated() then
       ui_message("ELS dual siren " .. index .. " is not configured for this vehicle", 3, 0, 1)
     end
@@ -977,7 +1125,9 @@ local function playDualSiren(index)
   end
 
   stopDualSiren()
-  playFeedback()
+  if not suppressFeedback then
+    playFeedback()
+  end
   activeDualSiren = index
   ensureElectricsValues().elsDualSiren = index
   safeSfxCall("cutSFX", source.id)
@@ -987,12 +1137,42 @@ local function playDualSiren(index)
   safeSfxCall("playSFX", source.id)
 end
 
+local function suspendActiveSirens()
+  local state = {
+    siren = activeSiren,
+    dualSiren = activeDualSiren
+  }
+
+  stopSiren()
+  stopDualSiren()
+
+  if state.siren == 0 and state.dualSiren == 0 then
+    return nil
+  end
+
+  return state
+end
+
+local function restoreSuspendedSirens(state)
+  if not state then
+    return
+  end
+
+  if state.siren and state.siren > 0 then
+    playSiren(state.siren, true)
+  end
+  if state.dualSiren and state.dualSiren > 0 then
+    playDualSiren(state.dualSiren, true)
+  end
+end
+
 local function toggleDualSiren(index)
   if not updateControllerInstalled() then
     return
   end
 
   if getCurrentElsStage() < getSirenStage() then
+    blockAction("dual")
     return
   end
 
@@ -1031,6 +1211,20 @@ local function applyManualPart()
     config.manual.soundscapeId = selectedPart
     config.manual.label = getSirenDisplayName(selectedPart) or selectedPart
     manualLoadedPart = selectedPart
+  end
+end
+
+local function applyHornPart()
+  local selectedPart = getSelectedHornPart()
+  if selectedPart and selectedPart ~= "" and hornLoadedPart ~= selectedPart then
+    if hornSource then
+      safeDeleteSource(hornSource, "horn")
+      hornSource = nil
+    end
+    config.horn = config.horn or {}
+    config.horn.soundscapeId = selectedPart
+    config.horn.label = hornNamesById and hornNamesById[selectedPart] or selectedPart
+    hornLoadedPart = selectedPart
   end
 end
 
@@ -1095,6 +1289,70 @@ local function ensureManualSource()
   return manualSource
 end
 
+local function ensureHornSource()
+  config.horn = config.horn or {}
+  hornCatalogById = hornCatalogById or buildHornCatalog()
+  applyHornPart()
+
+  if not controllerInstalled then
+    return nil
+  end
+
+  if hornSource then
+    return hornSource
+  end
+
+  if not config.horn.soundscapeId or config.horn.soundscapeId == "" then
+    return nil
+  end
+
+  local entry = hornCatalogById[config.horn.soundscapeId]
+  if not entry then
+    warnOnce("missing_horn_soundscape_" .. tostring(config.horn.soundscapeId), "Missing horn soundscape: " .. tostring(config.horn.soundscapeId))
+    return nil
+  end
+
+  local path = resolveSoundPath(entry.source, "unverified_horn_sound_" .. tostring(config.horn.soundscapeId), "horn")
+
+  local refNode = getFrontCenterNodeRef()
+  if not refNode then
+    return nil
+  end
+
+  local profileName = "els_horn_" .. tostring(config.horn.soundscapeId) .. "_" .. obj:getID()
+  local ok, source = pcall(function()
+    return obj:createSFXSource2(path, "AudioDefaultLoop3D", profileName, refNode, 0)
+  end)
+  if not ok or not source then
+    warnOnce("create_horn_" .. tostring(config.horn.soundscapeId), "Unable to create ELS horn source for " .. tostring(config.horn.soundscapeId) .. ": " .. tostring(source))
+    return nil
+  end
+
+  local stopName = nil
+  local stopPath = resolveSoundPath(entry.stopPath, "unverified_horn_stop_" .. tostring(config.horn.soundscapeId), "horn stop")
+  if stopPath and stopPath ~= "" and stopPath:sub(1, 6) ~= "event:" then
+    stopName = entry.stopName or (profileName .. "_stop")
+    local stopOk, stopErr = pcall(function()
+      obj:createSFXSource(stopPath, "AudioDefault3D", stopName, refNode)
+    end)
+    if not stopOk then
+      warnOnce("create_horn_stop_" .. tostring(config.horn.soundscapeId), "Unable to create ELS horn stop source for " .. tostring(config.horn.soundscapeId) .. ": " .. tostring(stopErr))
+      stopName = nil
+    end
+  end
+
+  hornSource = {
+    id = source,
+    label = entry.name,
+    volume = entry.volume or config.horn.volume or 1.0,
+    pitch = entry.pitch or 1.0,
+    stopName = stopName,
+    nodeRef = refNode
+  }
+
+  return hornSource
+end
+
 local function startManual()
   if not updateControllerInstalled() then
     return
@@ -1102,6 +1360,7 @@ local function startManual()
 
   local source = ensureManualSource()
   if not source then
+    blockAction("manual")
     if controllerInstalled and safeFirstPlayerSeated() then
       ui_message("ELS manual siren is not configured for this vehicle", 3, 0, 1)
     end
@@ -1109,7 +1368,13 @@ local function startManual()
   end
 
   -- Manual overrides any playing tone and does not require the lights to be on.
-  stopAllSirens()
+  if hornSource and (ensureElectricsValues().elsHorn or 0) > 0 then
+    manualInterruptedSirens = hornInterruptedSirens
+    stopHorn(nil, nil, false)
+  end
+  if not manualInterruptedSirens then
+    manualInterruptedSirens = suspendActiveSirens()
+  end
   playFeedback()
   ensureElectricsValues().elsManual = 1
   safeSfxCall("cutSFX", source.id)
@@ -1119,13 +1384,22 @@ local function startManual()
   safeSfxCall("playSFX", source.id)
 end
 
-stopManual = function()
+stopManual = function(value, filtertype, restore)
+  if restore == nil then
+    restore = true
+  end
+
   if manualSource then
     safeSfxCall("stopSFX", manualSource.id)
     safeSfxCall("cutSFX", manualSource.id)
     safePlaySfxOnce(manualSource.stopName, manualSource.nodeRef, manualSource.volume, manualSource.pitch)
   end
   ensureElectricsValues().elsManual = 0
+
+  if restore then
+    restoreSuspendedSirens(manualInterruptedSirens)
+  end
+  manualInterruptedSirens = nil
 end
 
 local function manualSiren(value, filtertype)
@@ -1134,6 +1408,63 @@ local function manualSiren(value, filtertype)
     startManual()
   else
     stopManual()
+  end
+end
+
+local function startHorn()
+  if not updateControllerInstalled() then
+    return
+  end
+
+  local source = ensureHornSource()
+  if not source then
+    blockAction("horn")
+    if controllerInstalled and safeFirstPlayerSeated() then
+      ui_message("ELS horn is not configured for this vehicle", 3, 0, 1)
+    end
+    return
+  end
+
+  if manualSource and (ensureElectricsValues().elsManual or 0) > 0 then
+    hornInterruptedSirens = manualInterruptedSirens
+    stopManual(nil, nil, false)
+  end
+  if not hornInterruptedSirens then
+    hornInterruptedSirens = suspendActiveSirens()
+  end
+  playFeedback()
+  ensureElectricsValues().elsHorn = 1
+  safeSfxCall("cutSFX", source.id)
+  if not safeSfxCall("setVolumePitch", source.id, source.volume, source.pitch or 1.0) then
+    safeSfxCall("setVolume", source.id, source.volume)
+  end
+  safeSfxCall("playSFX", source.id)
+end
+
+stopHorn = function(value, filtertype, restore)
+  if restore == nil then
+    restore = true
+  end
+
+  if hornSource then
+    safeSfxCall("stopSFX", hornSource.id)
+    safeSfxCall("cutSFX", hornSource.id)
+    safePlaySfxOnce(hornSource.stopName, hornSource.nodeRef, hornSource.volume, hornSource.pitch)
+  end
+  ensureElectricsValues().elsHorn = 0
+
+  if restore then
+    restoreSuspendedSirens(hornInterruptedSirens)
+  end
+  hornInterruptedSirens = nil
+end
+
+local function hornSiren(value, filtertype)
+  local numericValue = tonumber(value) or 0
+  if value == true or numericValue > 0.1 then
+    startHorn()
+  else
+    stopHorn()
   end
 end
 
@@ -1224,6 +1555,7 @@ local function activateSiren(index, value, filtertype)
   end
 
   if getCurrentElsStage() < getSirenStage() then
+    blockAction(dualModifierHeld and "dual" or ("siren_" .. tostring(index)))
     return
   end
 
@@ -1345,6 +1677,9 @@ local function getVisualizerState()
     activeDualSiren = activeDualSiren,
     dualModifierHeld = dualModifierHeld,
     manualActive = (values.elsManual or 0) > 0,
+    hornActive = (values.elsHorn or 0) > 0,
+    blockedActionTarget = blockedActionTarget,
+    blockedActionNonce = blockedActionNonce,
     sirens = sirens
   }
 end
@@ -1381,6 +1716,7 @@ local function onExtensionLoaded()
   values.elsSiren = values.elsSiren or 0
   values.elsDualSiren = values.elsDualSiren or 0
   values.elsManual = values.elsManual or 0
+  values.elsHorn = values.elsHorn or 0
   log("I", "elsControllerVE", "ELS Controller vehicle extension loaded")
 end
 
@@ -1401,8 +1737,11 @@ M.stageUp = stageUp
 M.stageDown = stageDown
 M.activateSiren = activateSiren
 M.manualSiren = manualSiren
+M.hornSiren = hornSiren
 M.startManual = startManual
 M.stopManual = stopManual
+M.startHorn = startHorn
+M.stopHorn = stopHorn
 M.stopSiren = stopSiren
 M.stopDualSiren = stopDualSiren
 M.stopAllSirens = stopAllSirens
@@ -1410,6 +1749,7 @@ M.toggleDualSiren = toggleDualSiren
 M.dualModifier = dualModifier
 M.setSiren = setSiren
 M.setStageLightbarMode = setStageLightbarMode
+M.blockAction = blockAction
 M.getConfigInfo = getConfigInfo
 M.getVisualizerState = getVisualizerState
 M.debugSirenParts = debugSirenParts

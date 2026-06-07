@@ -1,5 +1,5 @@
 angular.module('beamng.apps')
-.directive('elsVisualizer', ['$interval', function ($interval) {
+.directive('elsVisualizer', ['$interval', '$timeout', function ($interval, $timeout) {
   return {
     templateUrl: '/ui/modules/apps/ELSVisualizer/app.html',
     replace: false,
@@ -9,6 +9,7 @@ angular.module('beamng.apps')
     controller: function ($scope) {
       var vm = this
       var timer = null
+      var clearBlockedTimer = null
 
       vm.visible = false
       vm.installed = false
@@ -19,6 +20,9 @@ angular.module('beamng.apps')
       vm.activeDualSiren = 0
       vm.dualArmed = false
       vm.manualHeld = false
+      vm.hornHeld = false
+      vm.blockedTarget = null
+      vm.blockedNonce = 0
       // label holds the real mounted-tone name, shown as the key's tooltip.
       vm.sirens = [
         { id: 1, active: false, dualActive: false, label: 'Siren 1' },
@@ -29,10 +33,21 @@ angular.module('beamng.apps')
 
       // Reserved keys for upcoming features — rendered but inert until wired.
       vm.future = [
-        { tag: 'LEFT\nALLEY' },
         { tag: 'RIGHT\nALLEY' },
         { tag: 'TRAF\nADV' }
       ]
+
+      function pulseBlocked(target) {
+        vm.blockedTarget = null
+        if (clearBlockedTimer) $timeout.cancel(clearBlockedTimer)
+        $timeout(function () {
+          vm.blockedTarget = target
+          clearBlockedTimer = $timeout(function () {
+            vm.blockedTarget = null
+            clearBlockedTimer = null
+          }, 700)
+        }, 0)
+      }
 
       function update() {
         bngApi.activeObjectLua('elsControllerVE.getVisualizerState()', function (state) {
@@ -51,6 +66,11 @@ angular.module('beamng.apps')
             vm.activeSiren = state.activeSiren || 0
             vm.activeDualSiren = state.activeDualSiren || 0
             vm.manualHeld = !!state.manualActive
+            vm.hornHeld = !!state.hornActive
+            if (state.blockedActionNonce && state.blockedActionNonce !== vm.blockedNonce) {
+              vm.blockedNonce = state.blockedActionNonce
+              pulseBlocked(state.blockedActionTarget)
+            }
             if (!vm.installed || vm.stage < vm.sirenStage) vm.dualArmed = false
             if (state.sirens) vm.sirens = state.sirens
           })
@@ -74,7 +94,12 @@ angular.module('beamng.apps')
       }
 
       vm.dual = function () {
-        if (!vm.installed || vm.stage < vm.sirenStage) return
+        if (!vm.installed) return
+        if (vm.stage < vm.sirenStage) {
+          bngApi.activeObjectLua('elsControllerVE.blockAction("dual")')
+          update()
+          return
+        }
         vm.dualArmed = !vm.dualArmed
       }
 
@@ -98,11 +123,29 @@ angular.module('beamng.apps')
         update()
       }
 
+      vm.hornStart = function () {
+        if (!vm.installed || vm.hornHeld) return
+        vm.hornHeld = true
+        bngApi.activeObjectLua('elsControllerVE.startHorn()')
+      }
+
+      vm.hornStop = function () {
+        if (!vm.hornHeld) return
+        vm.hornHeld = false
+        bngApi.activeObjectLua('elsControllerVE.stopHorn()')
+        update()
+      }
+
+      vm.blocked = function (target) {
+        return vm.blockedTarget === target
+      }
+
       update()
       timer = $interval(update, 250)
 
       $scope.$on('$destroy', function () {
         if (timer) $interval.cancel(timer)
+        if (clearBlockedTimer) $timeout.cancel(clearBlockedTimer)
       })
     }
   }

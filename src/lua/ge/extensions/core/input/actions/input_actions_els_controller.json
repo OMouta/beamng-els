@@ -63,9 +63,19 @@
     "title": "ELS manual siren",
     "desc": "Hold to play the ELS manual siren"
   },
+  "els_horn": {
+    "cat": "els_controller",
+    "order": 25,
+    "ctx": "vlua",
+    "onDown": "elsControllerVE.startHorn(VALUE, FILTERTYPE)",
+    "onUp": "elsControllerVE.stopHorn(VALUE, FILTERTYPE)",
+    "isBasic": true,
+    "title": "ELS horn",
+    "desc": "Hold to play the ELS horn"
+  },
   "els_siren_off": {
     "cat": "els_controller",
-    "order": 26,
+    "order": 27,
     "ctx": "vlua",
     "onDown": "elsControllerVE.stopAllSirens(VALUE, FILTERTYPE)",
     "isBasic": true,
@@ -74,7 +84,7 @@
   },
   "els_dual_siren_modifier": {
     "cat": "els_controller",
-    "order": 25,
+    "order": 26,
     "ctx": "vlua",
     "onDown": "elsControllerVE.dualModifier(VALUE, FILTERTYPE)",
     "onUp": "elsControllerVE.dualModifier(0, FILTERTYPE)",

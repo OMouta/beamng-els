@@ -16,7 +16,8 @@
       ["els_siren_2", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_4", "ELS Siren 2"],
       ["els_siren_3", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_8", "ELS Siren 3"],
       ["els_siren_4", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_7", "ELS Siren 4"],
-      ["els_siren_manual", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_3", "ELS Manual Siren"]
+      ["els_siren_manual", ["soundscape_siren"], ["els_controller_siren_bank"], "soundscape_siren_3", "ELS Manual Siren"],
+      ["els_horn", ["soundscape_horn"], [], "none", "ELS Horn"]
     ],
     "soundscape": [
       ["name", "src"],
