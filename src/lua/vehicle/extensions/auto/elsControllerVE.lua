@@ -31,6 +31,8 @@ local normalizeLightbarState
 local manualInterruptedSirens = nil
 local hornInterruptedSirens = nil
 local lastObservedLightbarState = nil
+local customElectricsDefaultsReady = false
+local extensionFailed = false
 local warned = {}
 
 local config = {
@@ -63,6 +65,52 @@ local function warnOnce(key, message)
   log("W", "elsControllerVE", message)
 end
 
+local function disableElsAfterError(source, err)
+  if not extensionFailed then
+    log("E", "elsControllerVE", "ELS Controller disabled itself after error in " .. tostring(source) .. ": " .. tostring(err))
+  end
+
+  extensionFailed = true
+  controllerInstalled = false
+  activeSiren = 0
+  activeDualSiren = 0
+  dualModifierHeld = false
+  manualInterruptedSirens = nil
+  hornInterruptedSirens = nil
+
+  local values = electrics and electrics.values
+  if values then
+    values.elsLightsStage = 0
+    values.elsLightbarModeIndex = 0
+    values.elsSiren = 0
+    values.elsDualSiren = 0
+    values.elsManual = 0
+    values.elsHorn = 0
+  end
+end
+
+local function guardedCall(source, fn, ...)
+  if extensionFailed and source == "getVisualizerState" then
+    return { controllerInstalled = false, failed = true }
+  end
+
+  if extensionFailed and source ~= "onExtensionLoaded" and source ~= "getConfigInfo" then
+    return nil
+  end
+
+  local args = { ... }
+  local ok, result1, result2, result3 = pcall(function()
+    return fn(unpack(args))
+  end)
+
+  if not ok then
+    disableElsAfterError(source, result1)
+    return nil
+  end
+
+  return result1, result2, result3
+end
+
 local function ensureElectricsValues()
   if electrics then
     electrics.values = electrics.values or {}
@@ -82,11 +130,19 @@ local function ensureStockLightbarElectrics(values)
     end
   end
 
+  local lightbarPositions = { "L", "R", "FL", "FR", "RL", "RR", "A", "B", "C" }
+  for index = 1, 16 do
+    for _, position in ipairs(lightbarPositions) do
+      values["lightbar_" .. index .. "_" .. position] = values["lightbar_" .. index .. "_" .. position] or 0
+    end
+  end
+
   local names = {
     "wigwag_L", "wigwag_R",
     "highbeam_wigwag_L", "highbeam_wigwag_R",
     "reverse_wigwag_L", "reverse_wigwag_R",
     "lowhighbeam_wigwag_L", "lowhighbeam_wigwag_R",
+    "takedown", "alley_L", "alley_R",
     "beacon_l", "beacon_r",
     "beacon_L", "beacon_R"
   }
@@ -94,6 +150,76 @@ local function ensureStockLightbarElectrics(values)
   for _, name in ipairs(names) do
     values[name] = values[name] or 0
   end
+
+  for index = 1, 16 do
+    values["warn_" .. index] = values["warn_" .. index] or 0
+    values["amber_" .. index] = values["amber_" .. index] or 0
+  end
+end
+
+local function shouldDefaultCustomElectricsName(name)
+  if type(name) ~= "string" or name == "" then
+    return false
+  end
+
+  local lower = name:lower()
+  return lower:find("lightbar", 1, true) ~= nil
+    or lower:find("wigwag", 1, true) ~= nil
+    or lower:find("beacon", 1, true) ~= nil
+    or lower:find("spotlight", 1, true) ~= nil
+    or lower:find("alley", 1, true) ~= nil
+    or lower:find("takedown", 1, true) ~= nil
+    or lower:find("scene", 1, true) ~= nil
+    or lower:find("strobe", 1, true) ~= nil
+    or lower:find("warn", 1, true) ~= nil
+    or lower:find("amber", 1, true) ~= nil
+    or lower:find("flash", 1, true) ~= nil
+    or lower:find("marker", 1, true) ~= nil
+    or lower:find("domelight", 1, true) ~= nil
+    or lower:find("drl", 1, true) ~= nil
+end
+
+local function addCustomElectricsDefault(values, name)
+  if shouldDefaultCustomElectricsName(name) and values[name] == nil then
+    values[name] = 0
+  end
+end
+
+local function addElectricsReferencesFromString(values, text)
+  for name in text:gmatch("electrics%.([A-Za-z_][A-Za-z0-9_]*)") do
+    if values[name] == nil then
+      values[name] = 0
+    end
+  end
+end
+
+local function collectCustomElectricsDefaults(node, values, seen)
+  if type(node) == "string" then
+    addElectricsReferencesFromString(values, node)
+    return
+  end
+
+  if type(node) ~= "table" or seen[node] then
+    return
+  end
+  seen[node] = true
+
+  for key, value in pairs(node) do
+    addCustomElectricsDefault(values, key)
+    collectCustomElectricsDefaults(value, values, seen)
+  end
+end
+
+local function ensureCustomLightElectrics(values)
+  values = values or ensureElectricsValues()
+  ensureStockLightbarElectrics(values)
+
+  if customElectricsDefaultsReady then
+    return
+  end
+
+  collectCustomElectricsDefaults(v and v.data, values, {})
+  customElectricsDefaultsReady = true
 end
 
 local function safeFirstPlayerSeated()
@@ -896,7 +1022,7 @@ end
 local function applyLightStageValues(stage)
   stage = normalizeLightbarState(stage)
   local values = ensureElectricsValues()
-  ensureStockLightbarElectrics(values)
+  ensureCustomLightElectrics(values)
 
   values.elsLightsStage = stage
   values.elsLightbarModeIndex = stage > 0 and getModeIndexForStage(stage) or 0
@@ -1700,6 +1826,11 @@ local function debugSirenParts()
 end
 
 local function onExtensionLoaded()
+  extensionFailed = false
+  customElectricsDefaultsReady = false
+  local values = ensureElectricsValues()
+  ensureCustomLightElectrics(values)
+
   if not updateControllerInstalled() then
     log("I", "elsControllerVE", "ELS Controller vehicle extension inactive; controller part is not installed")
     return
@@ -1710,7 +1841,6 @@ local function onExtensionLoaded()
   applyPartSelectedSirens()
   lightbarModeChoices = nil
   sirenCatalogById = buildSirenCatalog()
-  local values = ensureElectricsValues()
   lastObservedLightbarState = normalizeLightbarState(values.lightbar)
   applyLightStageValues(lastObservedLightbarState > 0 and getSirenStage() or 0)
   values.elsSiren = values.elsSiren or 0
@@ -1733,28 +1863,28 @@ local function onUpdate(dt)
   syncFromStockLightbar()
 end
 
-M.stageUp = stageUp
-M.stageDown = stageDown
-M.activateSiren = activateSiren
-M.manualSiren = manualSiren
-M.hornSiren = hornSiren
-M.startManual = startManual
-M.stopManual = stopManual
-M.startHorn = startHorn
-M.stopHorn = stopHorn
-M.stopSiren = stopSiren
-M.stopDualSiren = stopDualSiren
-M.stopAllSirens = stopAllSirens
-M.toggleDualSiren = toggleDualSiren
-M.dualModifier = dualModifier
-M.setSiren = setSiren
-M.setStageLightbarMode = setStageLightbarMode
-M.blockAction = blockAction
-M.getConfigInfo = getConfigInfo
-M.getVisualizerState = getVisualizerState
-M.debugSirenParts = debugSirenParts
-M.onExtensionLoaded = onExtensionLoaded
-M.onReset = onReset
-M.onUpdate = onUpdate
+M.stageUp = function(...) return guardedCall("stageUp", stageUp, ...) end
+M.stageDown = function(...) return guardedCall("stageDown", stageDown, ...) end
+M.activateSiren = function(...) return guardedCall("activateSiren", activateSiren, ...) end
+M.manualSiren = function(...) return guardedCall("manualSiren", manualSiren, ...) end
+M.hornSiren = function(...) return guardedCall("hornSiren", hornSiren, ...) end
+M.startManual = function(...) return guardedCall("startManual", startManual, ...) end
+M.stopManual = function(...) return guardedCall("stopManual", stopManual, ...) end
+M.startHorn = function(...) return guardedCall("startHorn", startHorn, ...) end
+M.stopHorn = function(...) return guardedCall("stopHorn", stopHorn, ...) end
+M.stopSiren = function(...) return guardedCall("stopSiren", stopSiren, ...) end
+M.stopDualSiren = function(...) return guardedCall("stopDualSiren", stopDualSiren, ...) end
+M.stopAllSirens = function(...) return guardedCall("stopAllSirens", stopAllSirens, ...) end
+M.toggleDualSiren = function(...) return guardedCall("toggleDualSiren", toggleDualSiren, ...) end
+M.dualModifier = function(...) return guardedCall("dualModifier", dualModifier, ...) end
+M.setSiren = function(...) return guardedCall("setSiren", setSiren, ...) end
+M.setStageLightbarMode = function(...) return guardedCall("setStageLightbarMode", setStageLightbarMode, ...) end
+M.blockAction = function(...) return guardedCall("blockAction", blockAction, ...) end
+M.getConfigInfo = function(...) return guardedCall("getConfigInfo", getConfigInfo, ...) end
+M.getVisualizerState = function(...) return guardedCall("getVisualizerState", getVisualizerState, ...) end
+M.debugSirenParts = function(...) return guardedCall("debugSirenParts", debugSirenParts, ...) end
+M.onExtensionLoaded = function(...) return guardedCall("onExtensionLoaded", onExtensionLoaded, ...) end
+M.onReset = function(...) return guardedCall("onReset", onReset, ...) end
+M.onUpdate = function(...) return guardedCall("onUpdate", onUpdate, ...) end
 
 return M
