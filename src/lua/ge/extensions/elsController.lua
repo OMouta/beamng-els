@@ -18,17 +18,7 @@ local function onExtensionLoaded()
   log("I", "elsController", "ELS Controller GE extension loaded")
 end
 
-local function onUiChangedState(state)
-  if state == "menu.mainmenu" then
-    local actions = extensions.core_input_actions and extensions.core_input_actions.getActiveActions()
-    if actions and not actions.els_lights_stage_up then
-      Lua:requestReload()
-    end
-  end
-end
-
 M.onExtensionLoaded = onExtensionLoaded
-M.onUiChangedState = onUiChangedState
 M.registerInputCategory = registerInputCategory
 
 return M

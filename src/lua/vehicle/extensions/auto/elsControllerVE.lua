@@ -20,6 +20,7 @@ local loadedPartSirens = {}
 local controllerInstalled = false
 local controllerWasInstalled = false
 local lightbarModeChoices = nil
+local lightbarPatternModes = nil
 local feedbackSources = {}
 local stopSiren
 local stopDualSiren
@@ -343,51 +344,79 @@ local function getModeIndexForStage(stage)
   return math.max(normalizeLightbarState(modeIndex ~= nil and modeIndex or stage), 1)
 end
 
-local function addLightbarModesFromConfig(choicesByIndex, controllerName, controllerConfig)
-  if type(controllerConfig) ~= "table" or type(controllerConfig.modes) ~= "table" then
-    return
-  end
+-- Modes that exist on a lightbar controller but are not emergency flash patterns.
+-- Since BeamNG 0.39 a stock police car carries several controllers of type
+-- "lightbar" (the roof bar plus separate "flashers" and "wigwag" groups), and
+-- their higher modes are work lights and traffic advisors rather than patterns.
+local nonPatternModeNames = {
+  "scene", "signal", "traffic", "advisor", "arrow",
+  "takedown", "alley", "flood", "work", "cruise"
+}
 
-  for index, row in ipairs(controllerConfig.modes) do
-    if index > 1 and type(row) == "table" then
-      local modeName = row[1]
-      if modeName and modeName ~= "" then
-        local modeIndex = index - 1
-        local choice = choicesByIndex[modeIndex]
-        if not choice then
-          choicesByIndex[modeIndex] = {
-            index = modeIndex,
-            label = tostring(modeName),
-            controllers = { controllerName }
-          }
-        elseif not choice.label:find(tostring(modeName), 1, true) then
-          choice.label = choice.label .. " / " .. tostring(modeName)
-          table.insert(choice.controllers, controllerName)
-        end
-      end
+local function isEmergencyPatternName(modeName)
+  local lower = tostring(modeName):lower()
+  for _, needle in ipairs(nonPatternModeNames) do
+    if lower:find(needle, 1, true) then
+      return false
     end
   end
+
+  return true
 end
 
-local function collectLightbarModesFromNode(node, choicesByIndex, seen)
-  if type(node) ~= "table" or seen[node] then
-    return
-  end
-  seen[node] = true
+-- controller name -> ordered list of { index, name } for its flash patterns only
+local function buildLightbarPatternModes()
+  local byController = {}
+  local controllerEntries = (v and v.data and v.data.controller) or {}
 
-  local controllerRows = node.controller
-  if type(controllerRows) == "table" then
-    for _, row in ipairs(controllerRows) do
-      local controllerName = type(row) == "table" and row[1]
-      if controllerName == "lightbar" or (type(controllerName) == "string" and controllerName:find("lightbar", 1, true)) then
-        addLightbarModesFromConfig(choicesByIndex, controllerName, row[2] or node[controllerName])
+  for _, entry in ipairs(controllerEntries) do
+    local fileName = type(entry) == "table" and tostring(entry.fileName or "") or ""
+    if fileName:find("lightbar", 1, true) and type(entry.modes) == "table" then
+      local allModes = {}
+      local patterns = {}
+
+      -- row 1 is the header row ("name", "config"), so mode N lives at row N+1
+      for row, modeRow in ipairs(entry.modes) do
+        local modeName = row > 1 and type(modeRow) == "table" and modeRow[1]
+        if modeName and modeName ~= "" then
+          local mode = { index = row - 1, name = tostring(modeName) }
+          table.insert(allModes, mode)
+          if isEmergencyPatternName(modeName) then
+            table.insert(patterns, mode)
+          end
+        end
+      end
+
+      -- a bar whose modes we can't classify still needs something to flash with
+      if #patterns == 0 then
+        patterns = allModes
+      end
+
+      if #patterns > 0 then
+        byController[tostring(entry.name or fileName)] = patterns
       end
     end
   end
 
-  for _, child in pairs(node) do
-    collectLightbarModesFromNode(child, choicesByIndex, seen)
+  return byController
+end
+
+local function getLightbarPatternModes()
+  lightbarPatternModes = lightbarPatternModes or buildLightbarPatternModes()
+  return lightbarPatternModes
+end
+
+-- An ELS stage counts through the patterns a bar actually has. A bar with fewer
+-- patterns than there are stages holds its last one rather than running past the
+-- end of its mode list, which would leave it on scene lights or frozen.
+local function resolveModeIndexForController(controllerName, requestedIndex)
+  local patterns = getLightbarPatternModes()[controllerName]
+  if not patterns or #patterns == 0 then
+    return requestedIndex
   end
+
+  local slot = math.min(math.max(requestedIndex, 1), #patterns)
+  return patterns[slot].index
 end
 
 local function getLightbarModeChoices()
@@ -395,11 +424,27 @@ local function getLightbarModeChoices()
     return lightbarModeChoices
   end
 
-  local choicesByIndex = {}
-  collectLightbarModesFromNode(v and v.data, choicesByIndex, {})
+  local choicesBySlot = {}
+  for controllerName, patterns in pairs(getLightbarPatternModes()) do
+    for slot, mode in ipairs(patterns) do
+      local choice = choicesBySlot[slot]
+      if not choice then
+        choicesBySlot[slot] = {
+          index = slot,
+          label = mode.name,
+          controllers = { controllerName }
+        }
+      else
+        if not choice.label:find(mode.name, 1, true) then
+          choice.label = choice.label .. " / " .. mode.name
+        end
+        table.insert(choice.controllers, controllerName)
+      end
+    end
+  end
 
   lightbarModeChoices = {}
-  for index, choice in pairs(choicesByIndex) do
+  for _, choice in pairs(choicesBySlot) do
     table.insert(lightbarModeChoices, choice)
   end
   table.sort(lightbarModeChoices, function(a, b) return a.index < b.index end)
@@ -1068,6 +1113,30 @@ local function getLightbarController()
   return nil
 end
 
+-- The stock lightbar controller announces every mode change through guihooks.
+-- Driving several bars at once from one ELS stage change would stack up toasts.
+local function withoutLightbarModeMessages(fn)
+  local original = guihooks and guihooks.message
+  if not original then
+    fn()
+    return
+  end
+
+  guihooks.message = function(message, ttl, category, ...)
+    if category == "vehicle.lightbar.mode" then
+      return
+    end
+    return original(message, ttl, category, ...)
+  end
+
+  local ok, err = pcall(fn)
+  guihooks.message = original
+
+  if not ok then
+    warnOnce("lightbar_mode_apply", "Unable to apply ELS lightbar modes: " .. tostring(err))
+  end
+end
+
 local function setLightbarModeIndex(modeIndex)
   local lightbars = getLightbarController()
   if not lightbars then
@@ -1075,16 +1144,20 @@ local function setLightbarModeIndex(modeIndex)
     return
   end
 
-  for _, lightbar in pairs(lightbars) do
-    if lightbar and lightbar.setModeIndex then
-      local ok, err = pcall(function()
-        lightbar.setModeIndex(modeIndex)
-      end)
-      if not ok then
-        warnOnce("set_lightbar_mode_" .. tostring(modeIndex), "Unable to set ELS lightbar mode index " .. tostring(modeIndex) .. ": " .. tostring(err))
+  withoutLightbarModeMessages(function()
+    for _, lightbar in pairs(lightbars) do
+      if lightbar and lightbar.setModeIndex then
+        local controllerName = tostring(lightbar.name or "lightbar")
+        local target = resolveModeIndexForController(controllerName, modeIndex)
+        local ok, err = pcall(function()
+          lightbar.setModeIndex(target)
+        end)
+        if not ok then
+          warnOnce("set_lightbar_mode_" .. controllerName .. "_" .. tostring(target), "Unable to set ELS lightbar mode index " .. tostring(target) .. " on " .. controllerName .. ": " .. tostring(err))
+        end
       end
     end
-  end
+  end)
 end
 
 local function setVehicleLightbarState(stage)
@@ -1798,6 +1871,8 @@ local function getVisualizerState()
     sirenStage = getSirenStage(),
     lightbarModeIndex = values.elsLightbarModeIndex or 0,
     lightbarModes = getLightbarModeChoices(),
+    -- how many stages this vehicle's bars can actually look different for
+    lightbarPatternCount = #getLightbarModeChoices(),
     lightStages = lightStages,
     activeSiren = activeSiren,
     activeDualSiren = activeDualSiren,
@@ -1840,6 +1915,7 @@ local function onExtensionLoaded()
   ensureManualConfig()
   applyPartSelectedSirens()
   lightbarModeChoices = nil
+  lightbarPatternModes = nil
   sirenCatalogById = buildSirenCatalog()
   lastObservedLightbarState = normalizeLightbarState(values.lightbar)
   applyLightStageValues(lastObservedLightbarState > 0 and getSirenStage() or 0)
