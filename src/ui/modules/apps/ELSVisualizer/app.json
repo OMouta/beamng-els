@@ -16,5 +16,5 @@
   "directive": "elsVisualizer",
   "category": "Vehicle",
   "isAuxiliary": false,
-  "interactive": "optional"
+  "interactive": "yes"
 }
